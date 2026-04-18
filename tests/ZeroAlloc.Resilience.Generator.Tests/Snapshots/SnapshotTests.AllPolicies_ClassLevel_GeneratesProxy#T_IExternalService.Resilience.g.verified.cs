@@ -40,10 +40,10 @@ internal sealed class IExternalServiceResilienceProxy : global::T.IExternalServi
         __totalCts.CancelAfter(5000);
 
         global::System.Exception? __lastEx = null;
-        for (int __attempt = 0; __attempt < _retry.MaxAttempts; __attempt++)
+        for (int __attempt = 0; __attempt < 3; __attempt++)
         {
             using var __attemptCts = global::System.Threading.CancellationTokenSource.CreateLinkedTokenSource(__totalCts.Token);
-            __attemptCts.CancelAfter(_retry.PerAttemptTimeoutMs);
+            __attemptCts.CancelAfter(1000);
             var __ct = __attemptCts.Token;
             try
             {
@@ -56,8 +56,8 @@ internal sealed class IExternalServiceResilienceProxy : global::T.IExternalServi
                 __lastEx = __ex;
                 _circuitBreaker.OnFailure(__ex);
                 if (__totalCts.IsCancellationRequested) break;
-                if (__attempt == _retry.MaxAttempts - 1) break;
-                await global::System.Threading.Tasks.Task.Delay(_retry.GetBackoffMs(__attempt), __totalCts.Token).ConfigureAwait(false);
+                if (__attempt == 2) break;
+                await global::System.Threading.Tasks.Task.Delay(200 * (1 << __attempt) + global::System.Random.Shared.Next(0, global::System.Math.Max(1, 200 * (1 << __attempt) / 2)), __totalCts.Token).ConfigureAwait(false);
             }
         }
         // All attempts exhausted
@@ -78,10 +78,10 @@ internal sealed class IExternalServiceResilienceProxy : global::T.IExternalServi
         __totalCts.CancelAfter(5000);
 
         global::System.Exception? __lastEx = null;
-        for (int __attempt = 0; __attempt < _retry.MaxAttempts; __attempt++)
+        for (int __attempt = 0; __attempt < 3; __attempt++)
         {
             using var __attemptCts = global::System.Threading.CancellationTokenSource.CreateLinkedTokenSource(__totalCts.Token);
-            __attemptCts.CancelAfter(_retry.PerAttemptTimeoutMs);
+            __attemptCts.CancelAfter(1000);
             var __ct = __attemptCts.Token;
             try
             {
@@ -94,8 +94,8 @@ internal sealed class IExternalServiceResilienceProxy : global::T.IExternalServi
                 __lastEx = __ex;
                 _circuitBreaker.OnFailure(__ex);
                 if (__totalCts.IsCancellationRequested) break;
-                if (__attempt == _retry.MaxAttempts - 1) break;
-                await global::System.Threading.Tasks.Task.Delay(_retry.GetBackoffMs(__attempt), __totalCts.Token).ConfigureAwait(false);
+                if (__attempt == 2) break;
+                await global::System.Threading.Tasks.Task.Delay(200 * (1 << __attempt) + global::System.Random.Shared.Next(0, global::System.Math.Max(1, 200 * (1 << __attempt) / 2)), __totalCts.Token).ConfigureAwait(false);
             }
         }
         // All attempts exhausted

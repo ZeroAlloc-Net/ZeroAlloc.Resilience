@@ -23,7 +23,7 @@ internal sealed class IMyServiceResilienceProxy : global::T.IMyService
     public async global::System.Threading.Tasks.ValueTask<string> GetAsync(string id, global::System.Threading.CancellationToken ct)
     {
         global::System.Exception? __lastEx = null;
-        for (int __attempt = 0; __attempt < _retry.MaxAttempts; __attempt++)
+        for (int __attempt = 0; __attempt < 3; __attempt++)
         {
             var __ct = ct;
             try
@@ -34,8 +34,8 @@ internal sealed class IMyServiceResilienceProxy : global::T.IMyService
             catch (global::System.Exception __ex)
             {
                 __lastEx = __ex;
-                if (__attempt == _retry.MaxAttempts - 1) break;
-                await global::System.Threading.Tasks.Task.Delay(_retry.GetBackoffMs(__attempt)).ConfigureAwait(false);
+                if (__attempt == 2) break;
+                await global::System.Threading.Tasks.Task.Delay(100 * (1 << __attempt)).ConfigureAwait(false);
             }
         }
         // All attempts exhausted

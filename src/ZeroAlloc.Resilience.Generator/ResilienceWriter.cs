@@ -142,7 +142,7 @@ internal static class ResilienceWriter
         var configKw = method.IsAsync ? ".ConfigureAwait(false)" : "";
 
         sb.AppendLine("        global::System.Exception? __lastEx = null;");
-        sb.AppendLine("        for (int __attempt = 0; __attempt < _retry.MaxAttempts; __attempt++)");
+        sb.AppendLine($"        for (int __attempt = 0; __attempt < {retry.MaxAttempts}; __attempt++)");
         sb.AppendLine("        {");
 
         // Per-attempt timeout CTS
@@ -150,7 +150,7 @@ internal static class ResilienceWriter
         {
             var innerToken = hasTotalTimeout ? "__totalCts.Token" : method.CancellationTokenParamName ?? "default";
             sb.AppendLine($"            using var __attemptCts = global::System.Threading.CancellationTokenSource.CreateLinkedTokenSource({innerToken});");
-            sb.AppendLine("            __attemptCts.CancelAfter(_retry.PerAttemptTimeoutMs);");
+            sb.AppendLine($"            __attemptCts.CancelAfter({retry.PerAttemptTimeoutMs});");
             sb.AppendLine("            var __ct = __attemptCts.Token;");
         }
         else if (hasTotalTimeout)
@@ -177,15 +177,21 @@ internal static class ResilienceWriter
             sb.AppendLine("                _circuitBreaker.OnFailure(__ex);");
         if (hasTotalTimeout)
             sb.AppendLine("                if (__totalCts.IsCancellationRequested) break;");
-        sb.AppendLine("                if (__attempt == _retry.MaxAttempts - 1) break;");
+        sb.AppendLine($"                if (__attempt == {retry.MaxAttempts - 1}) break;");
         if (method.IsAsync)
         {
             var delayToken = hasTotalTimeout ? ", __totalCts.Token" : "";
-            sb.AppendLine($"                await global::System.Threading.Tasks.Task.Delay(_retry.GetBackoffMs(__attempt){delayToken}).ConfigureAwait(false);");
+            var backoffExpr = retry.Jitter
+                ? $"{retry.BackoffMs} * (1 << __attempt) + global::System.Random.Shared.Next(0, global::System.Math.Max(1, {retry.BackoffMs} * (1 << __attempt) / 2))"
+                : $"{retry.BackoffMs} * (1 << __attempt)";
+            sb.AppendLine($"                await global::System.Threading.Tasks.Task.Delay({backoffExpr}{delayToken}).ConfigureAwait(false);");
         }
         else
         {
-            sb.AppendLine("                global::System.Threading.Thread.Sleep(_retry.GetBackoffMs(__attempt));");
+            var backoffExpr = retry.Jitter
+                ? $"{retry.BackoffMs} * (1 << __attempt) + global::System.Random.Shared.Next(0, global::System.Math.Max(1, {retry.BackoffMs} * (1 << __attempt) / 2))"
+                : $"{retry.BackoffMs} * (1 << __attempt)";
+            sb.AppendLine($"                global::System.Threading.Thread.Sleep({backoffExpr});");
         }
         sb.AppendLine("            }");
         sb.AppendLine("        }");

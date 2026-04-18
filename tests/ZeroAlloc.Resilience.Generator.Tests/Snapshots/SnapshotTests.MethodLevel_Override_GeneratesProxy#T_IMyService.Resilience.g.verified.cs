@@ -28,7 +28,7 @@ internal sealed class IMyServiceResilienceProxy : global::T.IMyService
         __totalCts.CancelAfter(5000);
 
         global::System.Exception? __lastEx = null;
-        for (int __attempt = 0; __attempt < _retry.MaxAttempts; __attempt++)
+        for (int __attempt = 0; __attempt < 3; __attempt++)
         {
             var __ct = __totalCts.Token;
             try
@@ -40,8 +40,8 @@ internal sealed class IMyServiceResilienceProxy : global::T.IMyService
             {
                 __lastEx = __ex;
                 if (__totalCts.IsCancellationRequested) break;
-                if (__attempt == _retry.MaxAttempts - 1) break;
-                await global::System.Threading.Tasks.Task.Delay(_retry.GetBackoffMs(__attempt), __totalCts.Token).ConfigureAwait(false);
+                if (__attempt == 2) break;
+                await global::System.Threading.Tasks.Task.Delay(200 * (1 << __attempt), __totalCts.Token).ConfigureAwait(false);
             }
         }
         // All attempts exhausted
@@ -54,7 +54,7 @@ internal sealed class IMyServiceResilienceProxy : global::T.IMyService
         __totalCts.CancelAfter(500);
 
         global::System.Exception? __lastEx = null;
-        for (int __attempt = 0; __attempt < _retry.MaxAttempts; __attempt++)
+        for (int __attempt = 0; __attempt < 1; __attempt++)
         {
             var __ct = __totalCts.Token;
             try
@@ -66,8 +66,8 @@ internal sealed class IMyServiceResilienceProxy : global::T.IMyService
             {
                 __lastEx = __ex;
                 if (__totalCts.IsCancellationRequested) break;
-                if (__attempt == _retry.MaxAttempts - 1) break;
-                await global::System.Threading.Tasks.Task.Delay(_retry.GetBackoffMs(__attempt), __totalCts.Token).ConfigureAwait(false);
+                if (__attempt == 0) break;
+                await global::System.Threading.Tasks.Task.Delay(200 * (1 << __attempt), __totalCts.Token).ConfigureAwait(false);
             }
         }
         // All attempts exhausted
