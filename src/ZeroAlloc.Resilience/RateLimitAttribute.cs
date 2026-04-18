@@ -8,7 +8,7 @@ namespace ZeroAlloc.Resilience;
 public sealed class RateLimitAttribute : Attribute
 {
     /// <summary>Maximum requests granted per second.</summary>
-    public int MaxPerSecond { get; init; }
+    public required int MaxPerSecond { get; init; }
 
     /// <summary>Maximum burst size (initial and peak token count). Default: 1.</summary>
     public int BurstSize { get; init; } = 1;
