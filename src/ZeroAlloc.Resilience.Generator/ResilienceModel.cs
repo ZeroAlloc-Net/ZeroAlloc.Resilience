@@ -12,7 +12,16 @@ internal sealed record ResilienceModel(
     RateLimitConfig? ClassRateLimit,
     CircuitBreakerConfig? ClassCircuitBreaker,
     ImmutableArray<MethodModel> Methods,
+    ImmutableArray<PassthroughMethodModel> PassthroughMethods,
     ImmutableArray<Diagnostic> Diagnostics
+);
+
+internal sealed record PassthroughMethodModel(
+    string Name,
+    string ReturnTypeFqn,
+    bool IsAsync,
+    string ParameterList,
+    string ArgumentList
 );
 
 internal sealed record MethodModel(

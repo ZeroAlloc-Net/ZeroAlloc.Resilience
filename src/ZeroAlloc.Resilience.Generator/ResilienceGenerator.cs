@@ -157,6 +157,30 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
         if (methodsBuilder.Count == 0 && diagnosticsBuilder.Count == 0)
             return null;
 
+        // Collect passthrough methods (interface methods that have no policy applied)
+        var passthroughBuilder = ImmutableArray.CreateBuilder<PassthroughMethodModel>();
+        var policyMethodNames = new System.Collections.Generic.HashSet<string>(
+            methodsBuilder.Select(static m => m.Name));
+
+        foreach (var member in iface.GetMembers().OfType<IMethodSymbol>())
+        {
+            if (member.MethodKind != MethodKind.Ordinary) continue;
+            if (policyMethodNames.Contains(member.Name)) continue; // already in policy methods
+
+            var ptReturnTypeFqn = member.ReturnType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            var ptIsAsync = IsAsyncType(member.ReturnType);
+            var ptParamList = string.Join(", ", member.Parameters.Select(static p =>
+                $"{p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)} {p.Name}"));
+            var ptArgList = string.Join(", ", member.Parameters.Select(static p => p.Name));
+
+            passthroughBuilder.Add(new PassthroughMethodModel(
+                Name: member.Name,
+                ReturnTypeFqn: ptReturnTypeFqn,
+                IsAsync: ptIsAsync,
+                ParameterList: ptParamList,
+                ArgumentList: ptArgList));
+        }
+
         var interfaceFqn = iface.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
 
         return new ResilienceModel(
@@ -168,6 +192,7 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
             ClassRateLimit: classRateLimit,
             ClassCircuitBreaker: classCircuitBreaker,
             Methods: methodsBuilder.ToImmutable(),
+            PassthroughMethods: passthroughBuilder.ToImmutable(),
             Diagnostics: diagnosticsBuilder.ToImmutable());
     }
 
