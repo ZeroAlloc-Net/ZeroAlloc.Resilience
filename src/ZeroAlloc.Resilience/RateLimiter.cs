@@ -52,9 +52,16 @@ public sealed class RateLimiter
         var toAdd = elapsed * _maxPerSecond / 1_000L;
         if (toAdd <= 0) return;
 
+        // Only one thread wins the CAS on _lastRefillTick — prevents double-refill
         if (Interlocked.CompareExchange(ref _lastRefillTick, now, last) != last) return;
-        var current = Volatile.Read(ref _tokens);
-        var next = Math.Min(current + toAdd, _burstSize);
-        Volatile.Write(ref _tokens, next);
+
+        // CAS loop on _tokens so concurrent TryAcquire() consumptions are not overwritten
+        long current, next;
+        do
+        {
+            current = Volatile.Read(ref _tokens);
+            next = Math.Min(current + toAdd, _burstSize);
+        }
+        while (Interlocked.CompareExchange(ref _tokens, next, current) != current);
     }
 }

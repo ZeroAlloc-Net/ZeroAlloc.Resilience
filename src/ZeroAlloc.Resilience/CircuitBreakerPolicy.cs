@@ -43,8 +43,7 @@ public sealed class CircuitBreakerPolicy : IDisposable
             {
                 Interlocked.Exchange(ref _failureCount, 0);
                 Interlocked.Exchange(ref _probeSuccessCount, 0);
-                _resetTimer?.Dispose();
-                _resetTimer = null;
+                CancelProbe();
                 _fsm.TryFire(CircuitBreakerTrigger.Success);
             }
         }
@@ -76,15 +75,25 @@ public sealed class CircuitBreakerPolicy : IDisposable
 
     private void ScheduleProbe()
     {
-        _resetTimer?.Dispose();
-        _resetTimer = new Timer(static s =>
+        // Create the new timer first, then atomically swap and dispose the old one.
+        var newTimer = new Timer(static s =>
         {
             var self = (CircuitBreakerPolicy)s!;
             Interlocked.Exchange(ref self._probeSuccessCount, 0);
             self._fsm.TryFire(CircuitBreakerTrigger.Probe);
         }, this, _resetMs, Timeout.Infinite);
+
+        Interlocked.Exchange(ref _resetTimer, newTimer)?.Dispose();
+    }
+
+    private void CancelProbe()
+    {
+        Interlocked.Exchange(ref _resetTimer, null)?.Dispose();
     }
 
     /// <inheritdoc/>
-    public void Dispose() => _resetTimer?.Dispose();
+    public void Dispose()
+    {
+        Interlocked.Exchange(ref _resetTimer, null)?.Dispose();
+    }
 }
