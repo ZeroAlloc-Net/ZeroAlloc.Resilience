@@ -6,6 +6,8 @@
     <Version>0.0.0-local</Version>
     <IsAotCompatible>true</IsAotCompatible>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="ZeroAlloc.StateMachine" Version="1.0.0" />
