@@ -31,6 +31,7 @@ internal sealed record MethodModel(
     bool ReturnsResult,             // true if return wraps Result<T,E>
     bool IsAsync,                   // true if ValueTask or Task
     bool HasCancellationToken,
+    string? CancellationTokenParamName, // name of the CancellationToken parameter, if any
     string ParameterList,           // "string id, CancellationToken ct"
     string ArgumentList,            // "id, ct"
     string ArgumentListWithToken,   // "id, __ct" (replaced CancellationToken arg)

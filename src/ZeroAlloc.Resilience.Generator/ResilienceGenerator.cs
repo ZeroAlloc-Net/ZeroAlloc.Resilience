@@ -91,6 +91,11 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
             var hasCt = member.Parameters.Any(static p =>
                 string.Equals(p.Type.ToDisplayString(), "System.Threading.CancellationToken", StringComparison.Ordinal));
 
+            var ctParamName = member.Parameters
+                .FirstOrDefault(static p =>
+                    string.Equals(p.Type.ToDisplayString(), "System.Threading.CancellationToken", StringComparison.Ordinal))
+                ?.Name;
+
             // ZR0002: timeout but no CancellationToken
             if ((timeout is not null || retry?.PerAttemptTimeoutMs > 0) && !hasCt)
             {
@@ -144,6 +149,7 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
                 ReturnsResult: returnsResult,
                 IsAsync: isAsync,
                 HasCancellationToken: hasCt,
+                CancellationTokenParamName: ctParamName,
                 ParameterList: paramList,
                 ArgumentList: argList,
                 ArgumentListWithToken: argListWithToken,

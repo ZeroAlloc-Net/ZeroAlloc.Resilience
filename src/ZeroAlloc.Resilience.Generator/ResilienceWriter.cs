@@ -113,11 +113,8 @@ internal static class ResilienceWriter
         bool hasTotalTimeout = method.Timeout is not null;
         if (hasTotalTimeout)
         {
-            var ctParamName = method.HasCancellationToken
-                ? FindCancellationTokenParamName(method.ParameterList)
-                : null;
-            if (ctParamName is not null)
-                sb.AppendLine($"        using var __totalCts = global::System.Threading.CancellationTokenSource.CreateLinkedTokenSource({ctParamName});");
+            if (method.CancellationTokenParamName is not null)
+                sb.AppendLine($"        using var __totalCts = global::System.Threading.CancellationTokenSource.CreateLinkedTokenSource({method.CancellationTokenParamName});");
             else
                 sb.AppendLine("        using var __totalCts = new global::System.Threading.CancellationTokenSource();");
             sb.AppendLine($"        __totalCts.CancelAfter({method.Timeout!.TotalMs});");
@@ -151,7 +148,7 @@ internal static class ResilienceWriter
         // Per-attempt timeout CTS
         if (retry.PerAttemptTimeoutMs > 0 && method.HasCancellationToken)
         {
-            var innerToken = hasTotalTimeout ? "__totalCts.Token" : FindCancellationTokenParamName(method.ParameterList) ?? "default";
+            var innerToken = hasTotalTimeout ? "__totalCts.Token" : method.CancellationTokenParamName ?? "default";
             sb.AppendLine($"            using var __attemptCts = global::System.Threading.CancellationTokenSource.CreateLinkedTokenSource({innerToken});");
             sb.AppendLine("            __attemptCts.CancelAfter(_retry.PerAttemptTimeoutMs);");
             sb.AppendLine("            var __ct = __attemptCts.Token;");
@@ -162,7 +159,7 @@ internal static class ResilienceWriter
         }
         else if (method.HasCancellationToken)
         {
-            sb.AppendLine($"            var __ct = {FindCancellationTokenParamName(method.ParameterList) ?? "default"};");
+            sb.AppendLine($"            var __ct = {method.CancellationTokenParamName ?? "default"};");
         }
 
         sb.AppendLine("            try");
@@ -173,15 +170,23 @@ internal static class ResilienceWriter
             sb.AppendLine("                _circuitBreaker.OnSuccess();");
         sb.AppendLine("                return __result;");
         sb.AppendLine("            }");
-        sb.AppendLine("            catch (global::System.Exception __ex) when (__attempt < _retry.MaxAttempts - 1)");
+        sb.AppendLine("            catch (global::System.Exception __ex)");
         sb.AppendLine("            {");
         sb.AppendLine("                __lastEx = __ex;");
         if (method.CircuitBreaker is not null)
             sb.AppendLine("                _circuitBreaker.OnFailure(__ex);");
         if (hasTotalTimeout)
             sb.AppendLine("                if (__totalCts.IsCancellationRequested) break;");
-        var delayToken = hasTotalTimeout ? ", __totalCts.Token" : "";
-        sb.AppendLine($"                {awaitKw}global::System.Threading.Tasks.Task.Delay(_retry.GetBackoffMs(__attempt){delayToken}){configKw};");
+        sb.AppendLine("                if (__attempt == _retry.MaxAttempts - 1) break;");
+        if (method.IsAsync)
+        {
+            var delayToken = hasTotalTimeout ? ", __totalCts.Token" : "";
+            sb.AppendLine($"                await global::System.Threading.Tasks.Task.Delay(_retry.GetBackoffMs(__attempt){delayToken}).ConfigureAwait(false);");
+        }
+        else
+        {
+            sb.AppendLine("                global::System.Threading.Thread.Sleep(_retry.GetBackoffMs(__attempt));");
+        }
         sb.AppendLine("            }");
         sb.AppendLine("        }");
         sb.AppendLine("        // All attempts exhausted");
@@ -278,21 +283,4 @@ internal static class ResilienceWriter
         sb.AppendLine("}");
     }
 
-    // Finds the name of the CancellationToken parameter from the parameter list string
-    private static string? FindCancellationTokenParamName(string parameterList)
-    {
-        // parameterList is like "global::System.String id, global::System.Threading.CancellationToken ct"
-        var parts = parameterList.Split(',');
-        foreach (var part in parts)
-        {
-            var trimmed = part.Trim();
-            var lastSpace = trimmed.LastIndexOf(' ');
-            if (lastSpace < 0) continue;
-            var typePart = trimmed.Substring(0, lastSpace);
-            var namePart = trimmed.Substring(lastSpace + 1);
-            if (typePart.EndsWith("CancellationToken", System.StringComparison.Ordinal))
-                return namePart;
-        }
-        return null;
-    }
 }
