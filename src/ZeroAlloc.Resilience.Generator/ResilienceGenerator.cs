@@ -29,8 +29,10 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
             foreach (var diag in model.Diagnostics)
                 ctx.ReportDiagnostic(diag);
 
-            if (model.Diagnostics.Any(static d => d.Severity == DiagnosticSeverity.Error))
-                return;
+            var hasError = false;
+            foreach (var d in model.Diagnostics)
+                if (d.Severity == DiagnosticSeverity.Error) { hasError = true; break; }
+            if (hasError) return;
 
             var source = ResilienceWriter.Write(model);
             var hintName = model.Namespace is null
@@ -102,6 +104,9 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
             // The fallback name comes from the CircuitBreakerAttribute on the method or class
             string? fallbackName = null;
             {
+                // Re-query raw AttributeData: Fallback is intentionally excluded from CircuitBreakerConfig
+                // (it is a generator-time string reference, not a runtime config value).
+                // We cannot read it from cbConfig, so we go back to the attribute directly.
                 var cbAttr = GetAttribute(member, CircuitBreakerFqn) ?? GetAttribute(iface, CircuitBreakerFqn);
                 if (cbAttr is not null)
                 {
@@ -238,8 +243,10 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
     private static bool IsAsyncType(ITypeSymbol type)
     {
         var name = type.OriginalDefinition.ToDisplayString();
-        return name.StartsWith("System.Threading.Tasks.ValueTask", StringComparison.Ordinal)
-            || name.StartsWith("System.Threading.Tasks.Task", StringComparison.Ordinal);
+        return name is "System.Threading.Tasks.ValueTask"
+                   or "System.Threading.Tasks.ValueTask<TResult>"
+                   or "System.Threading.Tasks.Task"
+                   or "System.Threading.Tasks.Task<TResult>";
     }
 
     private static (string innerType, bool isResult) UnwrapReturnType(ITypeSymbol returnType)
@@ -257,8 +264,8 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
     private static bool SignaturesMatch(IMethodSymbol method, IMethodSymbol fallback)
     {
         if (!string.Equals(
-            method.ReturnType.ToDisplayString(),
-            fallback.ReturnType.ToDisplayString(),
+            method.ReturnType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+            fallback.ReturnType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
             StringComparison.Ordinal)) return false;
 
         if (method.Parameters.Length != fallback.Parameters.Length) return false;
@@ -266,8 +273,8 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
         for (int i = 0; i < method.Parameters.Length; i++)
         {
             if (!string.Equals(
-                method.Parameters[i].Type.ToDisplayString(),
-                fallback.Parameters[i].Type.ToDisplayString(),
+                method.Parameters[i].Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                fallback.Parameters[i].Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
                 StringComparison.Ordinal)) return false;
         }
         return true;
