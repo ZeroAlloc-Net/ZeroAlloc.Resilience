@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <PackageId>ZeroAlloc.Resilience</PackageId>
+    <Description>Source-generated, zero-allocation resilience policies for .NET. Add [Retry], [Timeout], [RateLimit], and [CircuitBreaker] to an interface; the generator emits a proxy composing all policies in declaration order. AOT-safe.</Description>
+    <Version>0.0.0-local</Version>
+    <IsAotCompatible>true</IsAotCompatible>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="ZeroAlloc.StateMachine" Version="1.0.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.0" />
+    <ProjectReference Include="..\ZeroAlloc.Resilience.Generator\ZeroAlloc.Resilience.Generator.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false"
+                      PrivateAssets="all" />
+  </ItemGroup>
+  <Target Name="IncludeGeneratorInPackage" BeforeTargets="_GetPackageFiles">
+    <ItemGroup>
+      <None Include="$(MSBuildThisFileDirectory)..\ZeroAlloc.Resilience.Generator\bin\$(Configuration)\netstandard2.0\ZeroAlloc.Resilience.Generator.dll"
+            Pack="true"
+            PackagePath="analyzers/dotnet/cs"
+            Visible="false" />
+    </ItemGroup>
+  </Target>
+</Project>

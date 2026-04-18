@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ZeroAlloc.Resilience/ZeroAlloc.Resilience.csproj" />
+    <Project Path="src/ZeroAlloc.Resilience.Generator/ZeroAlloc.Resilience.Generator.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ZeroAlloc.Resilience.Tests/ZeroAlloc.Resilience.Tests.csproj" />
+    <Project Path="tests/ZeroAlloc.Resilience.Generator.Tests/ZeroAlloc.Resilience.Generator.Tests.csproj" />
+  </Folder>
+  <Folder Name="/benchmarks/">
+    <Project Path="benchmarks/ZeroAlloc.Resilience.Benchmarks/ZeroAlloc.Resilience.Benchmarks.csproj" />
+  </Folder>
+</Solution>
