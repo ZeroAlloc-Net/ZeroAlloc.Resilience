@@ -35,5 +35,6 @@ internal sealed record MethodModel(
 // Effective config = method-level ?? class-level
 internal sealed record RetryConfig(int MaxAttempts, int BackoffMs, bool Jitter, int PerAttemptTimeoutMs);
 internal sealed record TimeoutConfig(int TotalMs);
-internal sealed record RateLimitConfig(int MaxPerSecond, int BurstSize, string Scope); // Scope as string: "Shared" or "Instance"
-internal sealed record CircuitBreakerConfig(int MaxFailures, int ResetMs, int HalfOpenProbes, string? FallbackMethod);
+internal enum RateLimitScope { Shared, Instance }
+internal sealed record RateLimitConfig(int MaxPerSecond, int BurstSize, RateLimitScope Scope);
+internal sealed record CircuitBreakerConfig(int MaxFailures, int ResetMs, int HalfOpenProbes);
