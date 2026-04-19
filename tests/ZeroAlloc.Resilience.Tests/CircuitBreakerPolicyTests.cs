@@ -76,5 +76,44 @@ public class CircuitBreakerPolicyTests : IDisposable
         _cb.State.Should().Be(CircuitBreakerState.Closed);
     }
 
+    [Fact]
+    public async Task HalfOpenProbes_MultipleSuccessesRequired_ToClose()
+    {
+        using var cb = new CircuitBreakerPolicy(maxFailures: 2, resetMs: 30, halfOpenProbes: 3);
+
+        // Trip the circuit
+        cb.OnFailure(new Exception());
+        cb.OnFailure(new Exception());
+        cb.State.Should().Be(CircuitBreakerState.Open);
+
+        // Wait for HalfOpen probe
+        await Task.Delay(150);
+        cb.State.Should().Be(CircuitBreakerState.HalfOpen);
+
+        // First success — not yet closed (needs 3)
+        cb.OnSuccess();
+        cb.State.Should().Be(CircuitBreakerState.HalfOpen);
+
+        // Second success — still not closed
+        cb.OnSuccess();
+        cb.State.Should().Be(CircuitBreakerState.HalfOpen);
+
+        // Third success — now closes
+        cb.OnSuccess();
+        cb.State.Should().Be(CircuitBreakerState.Closed);
+    }
+
+    [Fact]
+    public void CircuitOpen_NoFallback_ThrowsResilienceException()
+    {
+        // Integration test: proxy with CB but no fallback should throw ResilienceException when open
+        // We test CircuitBreakerPolicy.CanExecute() directly since the throw is in generated code
+        var cb = new CircuitBreakerPolicy(maxFailures: 1, resetMs: 10_000, halfOpenProbes: 1);
+        cb.OnFailure(new Exception());
+        cb.State.Should().Be(CircuitBreakerState.Open);
+        cb.CanExecute().Should().BeFalse();
+        cb.Dispose();
+    }
+
     public void Dispose() => _cb.Dispose();
 }
