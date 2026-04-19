@@ -219,22 +219,31 @@ internal static class ResilienceWriter
             callArgs = method.ArgumentList;
         }
 
-        sb.AppendLine("        try");
-        sb.AppendLine("        {");
-        sb.AppendLine($"            var __result = {awaitKw}_inner.{method.Name}({callArgs}){configKw};");
-        if (method.CircuitBreaker is not null)
-            sb.AppendLine("            _circuitBreaker.OnSuccess();");
-        sb.AppendLine("            return __result;");
-        sb.AppendLine("        }");
-        sb.AppendLine("        catch (global::System.Exception __ex)");
-        sb.AppendLine("        {");
-        if (method.CircuitBreaker is not null)
-            sb.AppendLine("            _circuitBreaker.OnFailure(__ex);");
-        if (method.ReturnsResult)
-            sb.AppendLine($"            return global::ZeroAlloc.Results.Result.Failure<{method.InnerReturnType}>(__ex.Message);");
+        // Only emit try/catch if we have something to do in the catch block
+        bool needsCatch = method.CircuitBreaker is not null || method.ReturnsResult;
+        if (needsCatch)
+        {
+            sb.AppendLine("        try");
+            sb.AppendLine("        {");
+            sb.AppendLine($"            var __result = {awaitKw}_inner.{method.Name}({callArgs}){configKw};");
+            if (method.CircuitBreaker is not null)
+                sb.AppendLine("            _circuitBreaker.OnSuccess();");
+            sb.AppendLine("            return __result;");
+            sb.AppendLine("        }");
+            sb.AppendLine("        catch (global::System.Exception __ex)");
+            sb.AppendLine("        {");
+            if (method.CircuitBreaker is not null)
+                sb.AppendLine("            _circuitBreaker.OnFailure(__ex);");
+            if (method.ReturnsResult)
+                sb.AppendLine($"            return global::ZeroAlloc.Results.Result.Failure<{method.InnerReturnType}>(__ex.Message);");
+            else
+                sb.AppendLine("            throw;");
+            sb.AppendLine("        }");
+        }
         else
-            sb.AppendLine("            throw;");
-        sb.AppendLine("        }");
+        {
+            sb.AppendLine($"        return {awaitKw}_inner.{method.Name}({callArgs}){configKw};");
+        }
     }
 
     private static void WritePassthrough(StringBuilder sb, PassthroughMethodModel method)

@@ -108,19 +108,19 @@ public class ProxyIntegrationTests
     }
 
     [Fact]
-    public void RateLimit_BlocksWhenBucketEmpty()
+    public async Task RateLimit_BlocksWhenBucketEmpty()
     {
         var inner = new RateLimitedImpl();
         var limiter = new RateLimiter(maxPerSecond: 2, burstSize: 2, scope: RateLimitScope.Shared);
         var proxy = new IRateLimitedServiceResilienceProxy(inner, limiter);
 
         // Consume burst
-        proxy.GetAsync("1", CancellationToken.None).GetAwaiter().GetResult().Should().Be("ok:1");
-        proxy.GetAsync("2", CancellationToken.None).GetAwaiter().GetResult().Should().Be("ok:2");
+        (await proxy.GetAsync("1", CancellationToken.None)).Should().Be("ok:1");
+        (await proxy.GetAsync("2", CancellationToken.None)).Should().Be("ok:2");
 
         // Bucket empty — should throw
-        var act = () => proxy.GetAsync("3", CancellationToken.None).GetAwaiter().GetResult();
-        act.Should().Throw<ResilienceException>()
+        var act = async () => await proxy.GetAsync("3", CancellationToken.None);
+        await act.Should().ThrowAsync<ResilienceException>()
             .Where(e => e.Policy == ResiliencePolicy.RateLimit);
     }
 }
