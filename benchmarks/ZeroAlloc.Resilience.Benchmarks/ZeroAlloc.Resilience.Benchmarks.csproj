@@ -10,7 +10,7 @@
     <ProjectReference Include="..\..\src\ZeroAlloc.Resilience\ZeroAlloc.Resilience.csproj" />
     <ProjectReference Include="..\..\src\ZeroAlloc.Resilience.Generator\ZeroAlloc.Resilience.Generator.csproj"
                       OutputItemType="Analyzer"
-                      ReferenceOutputAssembly="true" />
+                      ReferenceOutputAssembly="false" />
     <PackageReference Include="BenchmarkDotNet" Version="0.14.0" />
   </ItemGroup>
 </Project>
