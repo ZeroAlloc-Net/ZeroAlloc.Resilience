@@ -4,6 +4,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- Pre-existing code has multiple types per file (MA0048) and intentional custom exception (RCS1194) -->
+    <NoWarn>$(NoWarn);MA0048;RCS1194</NoWarn>
 
     <Authors>Marcel Roozekrans</Authors>
     <Company>Marcel Roozekrans</Company>
