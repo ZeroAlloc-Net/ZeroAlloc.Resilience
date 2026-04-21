@@ -118,7 +118,11 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
                     fallbackName = GetString(cbAttr, "Fallback");
                     if (fallbackName is not null)
                     {
-                        var fallback = iface.GetMembers(fallbackName).OfType<IMethodSymbol>().FirstOrDefault();
+                        IMethodSymbol? fallback = null;
+                        foreach (var fb in iface.GetMembers(fallbackName))
+                        {
+                            if (fb is IMethodSymbol fbMethod) { fallback = fbMethod; break; }
+                        }
                         if (fallback is null || !SignaturesMatch(member, fallback))
                         {
                             diagnosticsBuilder.Add(Diagnostic.Create(
@@ -166,7 +170,7 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
         // Collect passthrough methods (interface methods that have no policy applied)
         var passthroughBuilder = ImmutableArray.CreateBuilder<PassthroughMethodModel>();
         var policyMethodNames = new System.Collections.Generic.HashSet<string>(
-            methodsBuilder.Select(static m => m.Name));
+            methodsBuilder.Select(static m => m.Name), StringComparer.Ordinal);
 
         foreach (var member in iface.GetMembers().OfType<IMethodSymbol>())
         {
