@@ -1,0 +1,7 @@
+<Project>
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+  <PropertyGroup>
+    <!-- Test projects: relax rules that don't apply to test code -->
+    <NoWarn>$(NoWarn);MA0047;MA0004;ERP022</NoWarn>
+  </PropertyGroup>
+</Project>
