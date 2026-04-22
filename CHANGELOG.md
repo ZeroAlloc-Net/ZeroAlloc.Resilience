@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.2](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v1.0.1...v1.0.2) (2026-04-22)
+
+
+### Bug Fixes
+
+* **packaging:** ensure 1.0.1 package reaches NuGet ([2ebe8de](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/2ebe8de8a69b31f37e1a45348e07ae63b9e8cf5c))
+
 ## [1.0.1](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v1.0.0...v1.0.1) (2026-04-22)
 
 
