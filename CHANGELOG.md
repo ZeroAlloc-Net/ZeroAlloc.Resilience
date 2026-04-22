@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v1.0.0...v1.0.1) (2026-04-22)
+
+
+### Bug Fixes
+
+* **packaging:** publish Z logo icon to NuGet ([#4](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/4)) ([b5eb301](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/b5eb301c016840665b34709600efb6f22e7d0f45))
+
 ## 1.0.0 (2026-04-19)
 
 
