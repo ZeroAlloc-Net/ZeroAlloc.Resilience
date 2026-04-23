@@ -270,7 +270,11 @@ internal static class ResilienceWriter
 
         sb.AppendLine("public static partial class ResilienceServiceCollectionExtensions");
         sb.AppendLine("{");
-        sb.AppendLine($"    public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection Add{model.InterfaceName.TrimStart('I')}Resilience<TImpl>(");
+        sb.AppendLine($"    public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection Add{model.InterfaceName.TrimStart('I')}Resilience<");
+        // IL2091: TImpl flows into AddTransient<T> which requires PublicConstructors.
+        sb.AppendLine("        [global::System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(");
+        sb.AppendLine("            global::System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicConstructors)]");
+        sb.AppendLine("        TImpl>(");
         sb.AppendLine($"        this global::Microsoft.Extensions.DependencyInjection.IServiceCollection services)");
         sb.AppendLine($"        where TImpl : class, {model.InterfaceFqn}");
         sb.AppendLine("    {");
