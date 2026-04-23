@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.3](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v1.0.2...v1.0.3) (2026-04-23)
+
+
+### Bug Fixes
+
+* **generator:** annotate TImpl with [DynamicallyAccessedMembers] on Add{Service}Resilience ([#11](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/11)) ([eccaae9](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/eccaae96e09b172640bc14f6ac4c1949e68f69c8))
+
 ## [1.0.2](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v1.0.1...v1.0.2) (2026-04-22)
 
 
