@@ -10,4 +10,7 @@
   <Folder Name="/benchmarks/">
     <Project Path="benchmarks/ZeroAlloc.Resilience.Benchmarks/ZeroAlloc.Resilience.Benchmarks.csproj" />
   </Folder>
+  <Folder Name="/samples/">
+    <Project Path="samples/ZeroAlloc.Resilience.AotSmoke/ZeroAlloc.Resilience.AotSmoke.csproj" />
+  </Folder>
 </Solution>
