@@ -106,7 +106,10 @@ internal sealed class IExternalServiceResilienceProxy : global::T.IExternalServi
 
 public static partial class ResilienceServiceCollectionExtensions
 {
-    public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddExternalServiceResilience<TImpl>(
+    public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddExternalServiceResilience<
+        [global::System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(
+            global::System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicConstructors)]
+        TImpl>(
         this global::Microsoft.Extensions.DependencyInjection.IServiceCollection services)
         where TImpl : class, global::T.IExternalService
     {

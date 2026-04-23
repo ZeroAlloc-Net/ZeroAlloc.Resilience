@@ -7,10 +7,7 @@
     <InvariantGlobalization>true</InvariantGlobalization>
     <OptimizationPreference>Size</OptimizationPreference>
 
-    <!-- IL2091 temporarily suppressed — generator's DI extension is missing
-         [DynamicallyAccessedMembers(PublicConstructors)] on TImpl (tracked as #10) -->
-    <WarningsAsErrors>$(WarningsAsErrors);IL2026;IL2067;IL2075;IL3050;IL3051</WarningsAsErrors>
-    <NoWarn>$(NoWarn);IL2091</NoWarn>
+    <WarningsAsErrors>$(WarningsAsErrors);IL2026;IL2067;IL2075;IL2091;IL3050;IL3051</WarningsAsErrors>
   </PropertyGroup>
 
   <ItemGroup>
