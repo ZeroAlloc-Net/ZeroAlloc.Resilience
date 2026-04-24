@@ -196,7 +196,18 @@ internal static class ResilienceWriter
         sb.AppendLine("            }");
         sb.AppendLine("        }");
         sb.AppendLine("        // All attempts exhausted");
-        if (method.ReturnsResult)
+        if (method.Retry!.NonThrowing && method.NonThrowingValueType is null)
+        {
+            // NonThrowing=true but type extraction failed — emit a hard compile error instead of silently generating throwing code
+            sb.AppendLine($"#error ZR: [Retry(NonThrowing = true)] requires the method return type to be Result<T, ResilienceError> (on method '{method.Name}')");
+        }
+        else if (method.Retry!.NonThrowing && method.NonThrowingValueType is not null)
+        {
+            // NonThrowing=true: return Result<T, ResilienceError>.Failure(...) instead of throwing
+            sb.AppendLine($"        return global::ZeroAlloc.Results.Result<{method.NonThrowingValueType}, global::ZeroAlloc.Resilience.ResilienceError>.Failure(");
+            sb.AppendLine($"            new global::ZeroAlloc.Resilience.ResilienceError(\"Retry\", __lastEx?.Message ?? \"All retry attempts failed.\", __lastEx));");
+        }
+        else if (method.ReturnsResult)
             sb.AppendLine($"        return global::ZeroAlloc.Results.Result.Failure<{method.InnerReturnType}>(__lastEx?.Message ?? \"All retry attempts failed.\");");
         else
             sb.AppendLine("        throw new global::ZeroAlloc.Resilience.ResilienceException(global::ZeroAlloc.Resilience.ResiliencePolicy.Retry, \"All retry attempts failed.\", __lastEx);");

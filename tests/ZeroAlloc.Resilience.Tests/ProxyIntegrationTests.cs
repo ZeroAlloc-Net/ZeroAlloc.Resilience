@@ -4,6 +4,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using ZeroAlloc.Resilience;
+using ZeroAlloc.Results;
 
 namespace ZeroAlloc.Resilience.Tests;
 
@@ -26,6 +27,12 @@ public interface ICircuitService
 public interface IRateLimitedService
 {
     ValueTask<string> GetAsync(string id, CancellationToken ct);
+}
+
+[Retry(MaxAttempts = 3, BackoffMs = 1, NonThrowing = true)]
+public interface INonThrowingService
+{
+    ValueTask<Result<string, ResilienceError>> GetAsync(string id, CancellationToken ct);
 }
 
 // ── Fake inner implementations ──────────────────────────────────────────────────
@@ -62,6 +69,24 @@ public sealed class RateLimitedImpl : IRateLimitedService
 {
     public ValueTask<string> GetAsync(string id, CancellationToken ct)
         => ValueTask.FromResult($"ok:{id}");
+}
+
+public sealed class AlwaysFailImpl : INonThrowingService
+{
+    private int _callCount;
+    public int CallCount => _callCount;
+
+    public ValueTask<Result<string, ResilienceError>> GetAsync(string id, CancellationToken ct)
+    {
+        _callCount++;
+        throw new InvalidOperationException($"Simulated permanent failure for {id}");
+    }
+}
+
+public sealed class AlwaysSucceedImpl : INonThrowingService
+{
+    public ValueTask<Result<string, ResilienceError>> GetAsync(string id, CancellationToken ct)
+        => ValueTask.FromResult(Result<string, ResilienceError>.Success($"ok:{id}"));
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────────────
@@ -122,5 +147,44 @@ public class ProxyIntegrationTests
         var act = async () => await proxy.GetAsync("3", CancellationToken.None);
         await act.Should().ThrowAsync<ResilienceException>()
             .Where(e => e.Policy == ResiliencePolicy.RateLimit);
+    }
+
+    // ── NonThrowing path tests ─────────────────────────────────────────────────
+
+    [Fact]
+    public void RetryAttribute_NonThrowing_DefaultIsFalse()
+    {
+        var attr = new RetryAttribute();
+        attr.NonThrowing.Should().BeFalse("default opt-in value must be false to keep existing callers unaffected");
+    }
+
+    [Fact]
+    public async Task NonThrowing_ReturnsFailureResult_WhenAllAttemptsExhausted()
+    {
+        var inner = new AlwaysFailImpl();
+        var retry = new RetryPolicy(maxAttempts: 3, backoffMs: 1, jitter: false, perAttemptTimeoutMs: 0);
+        var proxy = new INonThrowingServiceResilienceProxy(inner, retry);
+
+        // Should not throw — returns a failed Result instead
+        var result = await proxy.GetAsync("x", CancellationToken.None);
+
+        result.IsFailure.Should().BeTrue("all retry attempts failed");
+        result.Error.PolicyType.Should().Be("Retry");
+        result.Error.Reason.Should().NotBeNullOrEmpty();
+        result.Error.InnerException.Should().BeOfType<InvalidOperationException>();
+        inner.CallCount.Should().Be(3, "all MaxAttempts must be exhausted before giving up");
+    }
+
+    [Fact]
+    public async Task NonThrowing_ReturnsSuccessResult_WhenInnerSucceeds()
+    {
+        var inner = new AlwaysSucceedImpl();
+        var retry = new RetryPolicy(maxAttempts: 3, backoffMs: 1, jitter: false, perAttemptTimeoutMs: 0);
+        var proxy = new INonThrowingServiceResilienceProxy(inner, retry);
+
+        var result = await proxy.GetAsync("y", CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Should().Be("ok:y");
     }
 }
