@@ -18,4 +18,12 @@ public sealed class RetryAttribute : Attribute
 
     /// <summary>Per-attempt timeout in milliseconds. 0 = no per-attempt timeout. Default: 0.</summary>
     public int PerAttemptTimeoutMs { get; init; } = 0;
+
+    /// <summary>
+    /// When <see langword="true"/>, the generated method returns
+    /// <c>Result&lt;T, ResilienceError&gt;</c> on the failure path instead of throwing
+    /// <see cref="ResilienceException"/>. Existing callers are unaffected because the default
+    /// is <see langword="false"/>.
+    /// </summary>
+    public bool NonThrowing { get; init; } = false;
 }

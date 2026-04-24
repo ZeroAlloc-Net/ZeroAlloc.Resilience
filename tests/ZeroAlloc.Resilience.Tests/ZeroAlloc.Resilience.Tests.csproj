@@ -10,6 +10,7 @@
     <PackageReference Include="FluentAssertions" Version="6.12.0" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.0" />
     <ProjectReference Include="..\..\src\ZeroAlloc.Resilience\ZeroAlloc.Resilience.csproj" />
+    <ProjectReference Include="..\..\..\ZeroAlloc.Results\src\ZeroAlloc.Results\ZeroAlloc.Results.csproj" />
     <ProjectReference Include="..\..\src\ZeroAlloc.Resilience.Generator\ZeroAlloc.Resilience.Generator.csproj"
                       OutputItemType="Analyzer"
                       ReferenceOutputAssembly="true" />

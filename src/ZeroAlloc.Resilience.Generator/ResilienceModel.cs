@@ -39,11 +39,13 @@ internal sealed record MethodModel(
     RetryConfig? Retry,
     TimeoutConfig? Timeout,
     RateLimitConfig? RateLimit,
-    CircuitBreakerConfig? CircuitBreaker
+    CircuitBreakerConfig? CircuitBreaker,
+    // When NonThrowing is true, holds the T extracted from Result<T, ResilienceError> (e.g. "global::System.String"). Null when NonThrowing is false, Retry is null, or extraction failed.
+    string? NonThrowingValueType = null
 );
 
 // Effective config = method-level ?? class-level
-internal sealed record RetryConfig(int MaxAttempts, int BackoffMs, bool Jitter, int PerAttemptTimeoutMs);
+internal sealed record RetryConfig(int MaxAttempts, int BackoffMs, bool Jitter, int PerAttemptTimeoutMs, bool NonThrowing = false);
 internal sealed record TimeoutConfig(int TotalMs);
 internal enum RateLimitScope { Shared, Instance }
 internal sealed record RateLimitConfig(int MaxPerSecond, int BurstSize, RateLimitScope Scope);

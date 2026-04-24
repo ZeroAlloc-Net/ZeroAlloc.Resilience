@@ -17,12 +17,14 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
-        var models = context.SyntaxProvider.CreateSyntaxProvider(
+#pragma warning disable EPS06 // IncrementalValuesProvider is a struct; hidden copies are unavoidable in the incremental pipeline API
+        var candidates = context.SyntaxProvider.CreateSyntaxProvider(
             predicate: static (node, _) =>
                 node is InterfaceDeclarationSyntax { AttributeLists.Count: > 0 },
-            transform: static (ctx, ct) => TryParse(ctx, ct))
-            .Where(static m => m is not null)
-            .Select(static (m, _) => m!);
+            transform: static (ctx, ct) => TryParse(ctx, ct));
+        var filtered = candidates.Where(static m => m is not null);
+        var models   = filtered.Select(static (m, _) => m!);
+#pragma warning restore EPS06
 
         context.RegisterSourceOutput(models, static (ctx, model) =>
         {
@@ -146,6 +148,27 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
                 string.Equals(p.Type.ToDisplayString(), "System.Threading.CancellationToken", StringComparison.Ordinal)
                     ? "__ct" : p.Name));
 
+            // Resolve NonThrowingValueType: the T in Result<T, ResilienceError> for NonThrowing retry methods.
+            string? nonThrowingValueType = null;
+            if (retry?.NonThrowing == true && isAsync && member.ReturnType is INamedTypeSymbol asyncWrapper
+                && asyncWrapper.TypeArguments.Length == 1
+                && asyncWrapper.TypeArguments[0] is INamedTypeSymbol resultType
+                && resultType.TypeArguments.Length == 2
+                && resultType.OriginalDefinition.ToDisplayString()
+                    .StartsWith("ZeroAlloc.Results.Result", StringComparison.Ordinal))
+            {
+                nonThrowingValueType = resultType.TypeArguments[0]
+                    .ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            }
+            else if (retry?.NonThrowing == true && !isAsync && member.ReturnType is INamedTypeSymbol syncResultType
+                && syncResultType.TypeArguments.Length == 2
+                && syncResultType.OriginalDefinition.ToDisplayString()
+                    .StartsWith("ZeroAlloc.Results.Result", StringComparison.Ordinal))
+            {
+                nonThrowingValueType = syncResultType.TypeArguments[0]
+                    .ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            }
+
             methodsBuilder.Add(new MethodModel(
                 Name: member.Name,
                 ReturnTypeFqn: returnTypeFqn,
@@ -161,7 +184,8 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
                 Retry: retry,
                 Timeout: timeout,
                 RateLimit: rateLimit,
-                CircuitBreaker: cbConfig));
+                CircuitBreaker: cbConfig,
+                NonThrowingValueType: nonThrowingValueType));
         }
 
         if (methodsBuilder.Count == 0 && diagnosticsBuilder.Count == 0)
@@ -219,7 +243,8 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
             MaxAttempts: GetInt(attr, "MaxAttempts", 3),
             BackoffMs: GetInt(attr, "BackoffMs", 200),
             Jitter: GetBool(attr, "Jitter", false),
-            PerAttemptTimeoutMs: GetInt(attr, "PerAttemptTimeoutMs", 0));
+            PerAttemptTimeoutMs: GetInt(attr, "PerAttemptTimeoutMs", 0),
+            NonThrowing: GetBool(attr, "NonThrowing", false));
     }
 
     private static TimeoutConfig? ParseTimeout(AttributeData? attr)
