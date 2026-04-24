@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v1.0.3...v1.1.0) (2026-04-24)
+
+
+### Features
+
+* non-throwing Result path + cross-repo NuGet isolation ([#17](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/17)) ([82813e0](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/82813e01b743b6f1c3ef507faefe0b6997dc84cd))
+
 ## [1.0.3](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v1.0.2...v1.0.3) (2026-04-23)
 
 
