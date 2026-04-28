@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.1](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v1.1.0...v1.1.1) (2026-04-28)
+
+
+### Documentation
+
+* add GitHub Sponsors badge to README ([acdc4e3](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/acdc4e359dff148e04e6648ca10a15f3def285e6))
+* add GitHub Sponsors badge to README ([562924e](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/562924e375b55967e8a5b5684e9d44f5000b758b))
+
 ## [1.1.0](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v1.0.3...v1.1.0) (2026-04-24)
 
 
