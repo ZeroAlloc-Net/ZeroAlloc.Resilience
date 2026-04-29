@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.2](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v1.1.1...v1.1.2) (2026-04-29)
+
+
+### Documentation
+
+* **readme:** standardize 5-badge set ([dc79e5e](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/dc79e5e32fecfa13f5845c37c66f3e714f52194b))
+* **readme:** standardize 5-badge set (NuGet/Build/License/AOT/Sponsors) ([3042b67](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/3042b6754272908f514f60e7fe936f9bd8940675))
+
 ## [1.1.1](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v1.1.0...v1.1.1) (2026-04-28)
 
 
