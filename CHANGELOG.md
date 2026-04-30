@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.3](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v1.1.2...v1.1.3) (2026-04-30)
+
+
+### Bug Fixes
+
+* stop publishing broken stand-alone generator nupkg ([66ee0d4](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/66ee0d48b871f10c72bcf3ee1968181c27e45456))
+* stop publishing broken stand-alone generator nupkg ([bf9ae2c](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/bf9ae2cc941fbbe66bbaab333bbec92fdb7d7e0a))
+
 ## [1.1.2](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v1.1.1...v1.1.2) (2026-04-29)
 
 
