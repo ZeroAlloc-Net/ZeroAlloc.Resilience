@@ -1,0 +1,96 @@
+#nullable enable
+ZeroAlloc.Resilience.CircuitBreakerAttribute
+ZeroAlloc.Resilience.CircuitBreakerAttribute.CircuitBreakerAttribute() -> void
+ZeroAlloc.Resilience.CircuitBreakerAttribute.Fallback.get -> string?
+ZeroAlloc.Resilience.CircuitBreakerAttribute.Fallback.init -> void
+ZeroAlloc.Resilience.CircuitBreakerAttribute.HalfOpenProbes.get -> int
+ZeroAlloc.Resilience.CircuitBreakerAttribute.HalfOpenProbes.init -> void
+ZeroAlloc.Resilience.CircuitBreakerAttribute.MaxFailures.get -> int
+ZeroAlloc.Resilience.CircuitBreakerAttribute.MaxFailures.init -> void
+ZeroAlloc.Resilience.CircuitBreakerAttribute.ResetMs.get -> int
+ZeroAlloc.Resilience.CircuitBreakerAttribute.ResetMs.init -> void
+ZeroAlloc.Resilience.CircuitBreakerFsm
+ZeroAlloc.Resilience.CircuitBreakerFsm.CircuitBreakerFsm() -> void
+ZeroAlloc.Resilience.CircuitBreakerFsm.Current.get -> ZeroAlloc.Resilience.CircuitBreakerState
+ZeroAlloc.Resilience.CircuitBreakerFsm.TryFire(ZeroAlloc.Resilience.CircuitBreakerTrigger trigger) -> bool
+ZeroAlloc.Resilience.CircuitBreakerPolicy
+ZeroAlloc.Resilience.CircuitBreakerPolicy.CanExecute() -> bool
+ZeroAlloc.Resilience.CircuitBreakerPolicy.CircuitBreakerPolicy(int maxFailures, int resetMs, int halfOpenProbes) -> void
+ZeroAlloc.Resilience.CircuitBreakerPolicy.Dispose() -> void
+ZeroAlloc.Resilience.CircuitBreakerPolicy.OnFailure(System.Exception! _) -> void
+ZeroAlloc.Resilience.CircuitBreakerPolicy.OnSuccess() -> void
+ZeroAlloc.Resilience.CircuitBreakerPolicy.State.get -> ZeroAlloc.Resilience.CircuitBreakerState
+ZeroAlloc.Resilience.CircuitBreakerState
+ZeroAlloc.Resilience.CircuitBreakerState.Closed = 0 -> ZeroAlloc.Resilience.CircuitBreakerState
+ZeroAlloc.Resilience.CircuitBreakerState.HalfOpen = 2 -> ZeroAlloc.Resilience.CircuitBreakerState
+ZeroAlloc.Resilience.CircuitBreakerState.Open = 1 -> ZeroAlloc.Resilience.CircuitBreakerState
+ZeroAlloc.Resilience.CircuitBreakerTrigger
+ZeroAlloc.Resilience.CircuitBreakerTrigger.FailInHalfOpen = 3 -> ZeroAlloc.Resilience.CircuitBreakerTrigger
+ZeroAlloc.Resilience.CircuitBreakerTrigger.Probe = 1 -> ZeroAlloc.Resilience.CircuitBreakerTrigger
+ZeroAlloc.Resilience.CircuitBreakerTrigger.Success = 2 -> ZeroAlloc.Resilience.CircuitBreakerTrigger
+ZeroAlloc.Resilience.CircuitBreakerTrigger.Trip = 0 -> ZeroAlloc.Resilience.CircuitBreakerTrigger
+ZeroAlloc.Resilience.RateLimitAttribute
+ZeroAlloc.Resilience.RateLimitAttribute.BurstSize.get -> int
+ZeroAlloc.Resilience.RateLimitAttribute.BurstSize.init -> void
+ZeroAlloc.Resilience.RateLimitAttribute.MaxPerSecond.get -> int
+ZeroAlloc.Resilience.RateLimitAttribute.MaxPerSecond.init -> void
+ZeroAlloc.Resilience.RateLimitAttribute.RateLimitAttribute() -> void
+ZeroAlloc.Resilience.RateLimitAttribute.Scope.get -> ZeroAlloc.Resilience.RateLimitScope
+ZeroAlloc.Resilience.RateLimitAttribute.Scope.init -> void
+ZeroAlloc.Resilience.RateLimitScope
+ZeroAlloc.Resilience.RateLimitScope.Instance = 1 -> ZeroAlloc.Resilience.RateLimitScope
+ZeroAlloc.Resilience.RateLimitScope.Shared = 0 -> ZeroAlloc.Resilience.RateLimitScope
+ZeroAlloc.Resilience.RateLimiter
+ZeroAlloc.Resilience.RateLimiter.RateLimiter(int maxPerSecond, int burstSize, ZeroAlloc.Resilience.RateLimitScope scope) -> void
+ZeroAlloc.Resilience.RateLimiter.Scope.get -> ZeroAlloc.Resilience.RateLimitScope
+ZeroAlloc.Resilience.RateLimiter.TryAcquire() -> bool
+ZeroAlloc.Resilience.ResilienceError
+ZeroAlloc.Resilience.ResilienceError.Deconstruct(out string! PolicyType, out string! Reason, out System.Exception? InnerException) -> void
+ZeroAlloc.Resilience.ResilienceError.Equals(ZeroAlloc.Resilience.ResilienceError other) -> bool
+ZeroAlloc.Resilience.ResilienceError.InnerException.get -> System.Exception?
+ZeroAlloc.Resilience.ResilienceError.InnerException.init -> void
+ZeroAlloc.Resilience.ResilienceError.PolicyType.get -> string!
+ZeroAlloc.Resilience.ResilienceError.PolicyType.init -> void
+ZeroAlloc.Resilience.ResilienceError.Reason.get -> string!
+ZeroAlloc.Resilience.ResilienceError.Reason.init -> void
+ZeroAlloc.Resilience.ResilienceError.ResilienceError() -> void
+ZeroAlloc.Resilience.ResilienceError.ResilienceError(string! PolicyType, string! Reason, System.Exception? InnerException = null) -> void
+ZeroAlloc.Resilience.ResilienceException
+ZeroAlloc.Resilience.ResilienceException.Policy.get -> ZeroAlloc.Resilience.ResiliencePolicy
+ZeroAlloc.Resilience.ResilienceException.ResilienceException(ZeroAlloc.Resilience.ResiliencePolicy policy, string! message, System.Exception? inner = null) -> void
+ZeroAlloc.Resilience.ResiliencePolicy
+ZeroAlloc.Resilience.ResiliencePolicy.CircuitBreaker = 3 -> ZeroAlloc.Resilience.ResiliencePolicy
+ZeroAlloc.Resilience.ResiliencePolicy.RateLimit = 2 -> ZeroAlloc.Resilience.ResiliencePolicy
+ZeroAlloc.Resilience.ResiliencePolicy.Retry = 0 -> ZeroAlloc.Resilience.ResiliencePolicy
+ZeroAlloc.Resilience.ResiliencePolicy.Timeout = 1 -> ZeroAlloc.Resilience.ResiliencePolicy
+ZeroAlloc.Resilience.RetryAttribute
+ZeroAlloc.Resilience.RetryAttribute.BackoffMs.get -> int
+ZeroAlloc.Resilience.RetryAttribute.BackoffMs.init -> void
+ZeroAlloc.Resilience.RetryAttribute.Jitter.get -> bool
+ZeroAlloc.Resilience.RetryAttribute.Jitter.init -> void
+ZeroAlloc.Resilience.RetryAttribute.MaxAttempts.get -> int
+ZeroAlloc.Resilience.RetryAttribute.MaxAttempts.init -> void
+ZeroAlloc.Resilience.RetryAttribute.NonThrowing.get -> bool
+ZeroAlloc.Resilience.RetryAttribute.NonThrowing.init -> void
+ZeroAlloc.Resilience.RetryAttribute.PerAttemptTimeoutMs.get -> int
+ZeroAlloc.Resilience.RetryAttribute.PerAttemptTimeoutMs.init -> void
+ZeroAlloc.Resilience.RetryAttribute.RetryAttribute() -> void
+ZeroAlloc.Resilience.RetryPolicy
+ZeroAlloc.Resilience.RetryPolicy.BackoffMs.get -> int
+ZeroAlloc.Resilience.RetryPolicy.GetBackoffMs(int attempt) -> int
+ZeroAlloc.Resilience.RetryPolicy.Jitter.get -> bool
+ZeroAlloc.Resilience.RetryPolicy.MaxAttempts.get -> int
+ZeroAlloc.Resilience.RetryPolicy.PerAttemptTimeoutMs.get -> int
+ZeroAlloc.Resilience.RetryPolicy.RetryPolicy(int maxAttempts, int backoffMs, bool jitter, int perAttemptTimeoutMs) -> void
+ZeroAlloc.Resilience.TimeoutAttribute
+ZeroAlloc.Resilience.TimeoutAttribute.Ms.get -> int
+ZeroAlloc.Resilience.TimeoutAttribute.Ms.init -> void
+ZeroAlloc.Resilience.TimeoutAttribute.TimeoutAttribute() -> void
+ZeroAlloc.Resilience.TimeoutPolicy
+ZeroAlloc.Resilience.TimeoutPolicy.TimeoutPolicy(int totalMs) -> void
+ZeroAlloc.Resilience.TimeoutPolicy.TotalMs.get -> int
+override ZeroAlloc.Resilience.ResilienceError.GetHashCode() -> int
+override ZeroAlloc.Resilience.ResilienceError.ToString() -> string!
+static ZeroAlloc.Resilience.ResilienceError.operator !=(ZeroAlloc.Resilience.ResilienceError left, ZeroAlloc.Resilience.ResilienceError right) -> bool
+static ZeroAlloc.Resilience.ResilienceError.operator ==(ZeroAlloc.Resilience.ResilienceError left, ZeroAlloc.Resilience.ResilienceError right) -> bool
+~override ZeroAlloc.Resilience.ResilienceError.Equals(object obj) -> bool
