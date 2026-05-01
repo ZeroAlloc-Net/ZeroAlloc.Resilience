@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v1.1.3...v1.2.0) (2026-05-01)
+
+
+### Features
+
+* lock public API surface (PublicApiAnalyzers + api-compat gate) ([#26](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/26)) ([75467d7](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/75467d7aa5677826c18ccce232f0450cdb36dfae))
+
 ## [1.1.3](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v1.1.2...v1.1.3) (2026-04-30)
 
 
