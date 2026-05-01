@@ -15,10 +15,19 @@
     <PackageReference Include="ZeroAlloc.Pipeline" Version="0.1.6" />
     <PackageReference Include="ZeroAlloc.Collections" Version="0.1.5" />
     <PackageReference Include="ZeroAlloc.Results" Version="0.1.4" />
+    <PackageReference Include="Microsoft.CodeAnalysis.PublicApiAnalyzers" Version="4.14.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
     <ProjectReference Include="..\ZeroAlloc.Resilience.Generator\ZeroAlloc.Resilience.Generator.csproj"
                       OutputItemType="Analyzer"
                       ReferenceOutputAssembly="false"
                       PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AdditionalFiles Include="PublicAPI.Shipped.txt" />
+    <AdditionalFiles Include="PublicAPI.Unshipped.txt" />
   </ItemGroup>
   <Target Name="IncludeGeneratorInPackage" BeforeTargets="_GetPackageFiles">
     <ItemGroup>
