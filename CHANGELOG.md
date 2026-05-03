@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.1](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v1.2.0...v1.2.1) (2026-05-03)
+
+
+### Bug Fixes
+
+* **release-please:** drop pre-major flags (package is post-1.0) ([#28](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/28)) ([53a2174](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/53a2174c65b8eef51153721bc2a3fd3c72a8e86b))
+
 ## [1.2.0](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v1.1.3...v1.2.0) (2026-05-01)
 
 
