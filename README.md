@@ -161,21 +161,21 @@ catch (ResilienceException ex) when (ex.Policy == ResiliencePolicy.CircuitBreake
 
 | ID | Severity | Description |
 |----|----------|-------------|
-| [ZR0001](docs/diagnostics/ZR0001.md) | Error | Fallback method not found or signature mismatch |
-| [ZR0002](docs/diagnostics/ZR0002.md) | Warning | Timeout configured but method has no `CancellationToken` |
+| [ZR0001](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/diagnostics/ZR0001.md) | Error | Fallback method not found or signature mismatch |
+| [ZR0002](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/diagnostics/ZR0002.md) | Warning | Timeout configured but method has no `CancellationToken` |
 
 ---
 
 ## Documentation
 
-Full docs live in [`docs/`](docs/index.md):
+Full docs live in [`docs/`](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/index.md):
 
-- [Getting Started](docs/getting-started.md)
-- [Attribute Reference](docs/attributes.md)
-- [Source Generator](docs/source-generator.md)
-- [Performance](docs/performance.md)
-- Core concepts: [Retry](docs/core-concepts/retry.md) · [Timeout](docs/core-concepts/timeout.md) · [Rate Limit](docs/core-concepts/rate-limit.md) · [Circuit Breaker](docs/core-concepts/circuit-breaker.md) · [Execution Order](docs/core-concepts/execution-order.md)
-- Guides: [Fallback](docs/guides/fallback.md) · [Method-Level Overrides](docs/guides/method-level-overrides.md) · [Result Return Types](docs/guides/result-return-types.md) · [DI Registration](docs/guides/di-registration.md)
+- [Getting Started](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/getting-started.md)
+- [Attribute Reference](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/attributes.md)
+- [Source Generator](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/source-generator.md)
+- [Performance](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/performance.md)
+- Core concepts: [Retry](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/core-concepts/retry.md) · [Timeout](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/core-concepts/timeout.md) · [Rate Limit](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/core-concepts/rate-limit.md) · [Circuit Breaker](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/core-concepts/circuit-breaker.md) · [Execution Order](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/core-concepts/execution-order.md)
+- Guides: [Fallback](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/guides/fallback.md) · [Method-Level Overrides](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/guides/method-level-overrides.md) · [Result Return Types](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/guides/result-return-types.md) · [DI Registration](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/guides/di-registration.md)
 
 ---
 
