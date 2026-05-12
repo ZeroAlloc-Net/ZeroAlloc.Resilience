@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.2](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v1.2.1...v1.2.2) (2026-05-12)
+
+
+### Bug Fixes
+
+* **readme:** absolute GitHub URLs so nuget.org links resolve ([#33](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/33)) ([3a96825](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/3a9682575d250f42e060bfd3ae329468c76bf530))
+
 ## [1.2.1](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v1.2.0...v1.2.1) (2026-05-03)
 
 
