@@ -8,7 +8,27 @@ sidebar_position: 4
 
 ZeroAlloc.Resilience is designed so that the proxy adds **zero heap allocation** on the happy path for methods without `[Timeout]`. All benchmarks are measured with [BenchmarkDotNet](https://benchmarkdotnet.org/) (.NET 10, Release mode, `[MemoryDiagnoser]`).
 
-## Results
+## Head-to-head vs Polly v8
+
+<!-- BENCH:START -->
+_Last refreshed: 2026-05-13_
+
+[Polly](https://github.com/App-vNext/Polly) v8 (`ResiliencePipeline`) is the de-facto resilience library in .NET. ZA.Resilience's source-generated proxy beats it on both throughput and allocation for the policies both libraries support apples-to-apples.
+
+| Operation | Polly v8 | ZA.Resilience | Speedup |
+|---|---:|---:|---:|
+| Retry, happy path | 600 ns / 64 B | **23 ns / 0 B** | **26× faster, 0 B alloc** |
+| CircuitBreaker, closed | 776 ns / 64 B | **17 ns / 0 B** | **45× faster, 0 B alloc** |
+| Retry with 2/3 failures | 22.86 ms / 3,134 B | 27.89 ms / 948 B | 22% slower wall-clock, **3.3× less alloc** |
+
+The happy-path gap is driven by Polly's `ResiliencePipeline.ExecuteAsync` walking the strategy chain via delegate dispatch and allocating a `ResilienceContext` per call (64 B). ZA emits one direct method per interface — the retry/CB checks are inline `if` statements and `Volatile.Read` calls. No context object, no closure, no delegate.
+
+The retry-with-failures row is dominated by `Task.Delay(BackoffMs)` (2× 1 ms = 2 ms minimum); the residual 22% wall-clock gap is ZA's `for`-loop retry scheduling — measurable, but mostly invisible against I/O latency in real workloads. Allocation is **3.3× lower** at 948 B vs 3,134 B.
+
+**Note on all-policies stacked comparison**: deferred. The two libraries' rate-limiter policies have different surface (Polly.RateLimiting is a separate package, ZA's RateLimit is part of the main package), so an apples-to-apples 4-policy comparison requires a custom harness. The Retry + CB pairings above are the most-cited isolated scenarios; see the self-benchmark table for ZA's all-policies stack.
+<!-- BENCH:END -->
+
+## Self-benchmark (all ZA scenarios)
 
 | Benchmark | Mean | Allocated |
 |---|---:|---:|
