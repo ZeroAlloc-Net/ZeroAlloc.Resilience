@@ -48,6 +48,8 @@ public class PollyComparisonBenchmark
 
         _zaRetry = new IRetryServiceResilienceProxy(_inner, retry);
         _zaCb = new ICircuitServiceResilienceProxy(_inner, cb);
+        // RetryWith2FailuresImpl carries an Interlocked counter — the two pipelines
+        // MUST get separate instances; do not "dedupe" this allocation.
         _zaRetryFailTwice = new IRetryServiceResilienceProxy(new RetryWith2FailuresImpl(), retry);
         _zaAllPolicies = new IAllPoliciesServiceResilienceProxy(
             _inner, retry, new TimeoutPolicy(5_000), rl, cb);
@@ -141,5 +143,6 @@ public class PollyComparisonBenchmark
     // package (Polly.RateLimiting) with a different surface; an
     // apples-to-apples all-policies comparison requires a custom
     // interface that pairs each library's policy stack one-for-one.
-    // Deferred to a follow-up.
+    // Tracked in c:/Projects/Prive/ZeroAlloc/docs/COMPARISON-SWEEP-BACKLOG.md
+    // (search "All-policies stacked comparison deferred").
 }
