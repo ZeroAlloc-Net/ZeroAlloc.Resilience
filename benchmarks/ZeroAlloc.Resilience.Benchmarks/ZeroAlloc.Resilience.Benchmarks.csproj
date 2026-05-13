@@ -12,5 +12,6 @@
                       OutputItemType="Analyzer"
                       ReferenceOutputAssembly="false" />
     <PackageReference Include="BenchmarkDotNet" Version="0.14.0" />
+    <PackageReference Include="Polly.Core" Version="8.5.0" />
   </ItemGroup>
 </Project>

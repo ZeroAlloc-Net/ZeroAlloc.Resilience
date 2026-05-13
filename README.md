@@ -37,6 +37,22 @@ Inject `IExternalService` anywhere — all policies are transparent to the calle
 
 ---
 
+## Performance
+
+Head-to-head vs **Polly v8** (the de-facto resilience library in .NET). .NET 10.0.7, BenchmarkDotNet v0.14.0.
+
+| Operation | Polly v8 | ZA.Resilience | Speedup |
+|---|---:|---:|---:|
+| Retry, happy path | 600 ns / 64 B | **23 ns / 0 B** | **26× faster, 0 B alloc** |
+| CircuitBreaker, closed | 776 ns / 64 B | **17 ns / 0 B** | **45× faster, 0 B alloc** |
+| Retry with 2/3 failures | 22.9 ms / 3,134 B | 27.9 ms / 948 B | 22% slower wall-clock, **3.3× less alloc** |
+
+The happy-path gap is driven by Polly's `ResiliencePipeline.ExecuteAsync` walking the strategy chain via delegate dispatch and allocating a `ResilienceContext` per call (64 B). ZA emits one direct method per interface — retry/CB checks are inline `if` statements with no context object or closure.
+
+The retry-with-failures wall-clock gap is dominated by `Task.Delay(BackoffMs)`; the residual 22% is ZA's `for`-loop scheduling — measurable, but mostly invisible against I/O latency.
+
+Full methodology + self-benchmark: [docs/performance.md](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/performance.md).
+
 ## Features
 
 | Feature | Notes |
