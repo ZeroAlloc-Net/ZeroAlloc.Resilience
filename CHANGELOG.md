@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v1.2.2...v1.3.0) (2026-05-13)
+
+
+### Features
+
+* **benchmarks:** add Polly v8 as competitor ([#35](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/35)) ([65d4534](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/65d453490fcf66d910eddf7b2abdba32c63bb9fb))
+
 ## [1.2.2](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v1.2.1...v1.2.2) (2026-05-12)
 
 
