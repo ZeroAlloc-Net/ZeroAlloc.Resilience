@@ -44,21 +44,56 @@ public interface IAllPoliciesService
     ValueTask<string> GetAsync(string id, CancellationToken ct);
 }
 
+// All-policies happy: nothing trips. Rate-limit / CB ceilings are int.MaxValue so BDN's
+// pilot phase never exhausts the bucket nor records enough failures to trip CB.
+[Retry(MaxAttempts = 3, BackoffMs = 1)]
+[Timeout(Ms = 5_000)]
+[RateLimit(MaxPerSecond = int.MaxValue, BurstSize = int.MaxValue)]
+[CircuitBreaker(MaxFailures = int.MaxValue, ResetMs = 60_000, HalfOpenProbes = 1)]
+public interface IAllPoliciesHappyService
+{
+    ValueTask<string> GetAsync(string id, CancellationToken ct);
+}
+
+// All-policies retry-triggers: inner fails 2/3, retry recovers. CB MaxFailures int.MaxValue
+// so the 2 failures per call don't accumulate enough to trip.
+[Retry(MaxAttempts = 3, BackoffMs = 1)]
+[Timeout(Ms = 5_000)]
+[RateLimit(MaxPerSecond = int.MaxValue, BurstSize = int.MaxValue)]
+[CircuitBreaker(MaxFailures = int.MaxValue, ResetMs = 60_000, HalfOpenProbes = 1)]
+public interface IAllPoliciesRetryService
+{
+    ValueTask<string> GetAsync(string id, CancellationToken ct);
+}
+
+// All-policies CB-open: pre-tripped in GlobalSetup. ResetMs = 60s outlives any BDN
+// measurement window so CB stays Open throughout.
+[Retry(MaxAttempts = 3, BackoffMs = 1)]
+[Timeout(Ms = 5_000)]
+[RateLimit(MaxPerSecond = int.MaxValue, BurstSize = int.MaxValue)]
+[CircuitBreaker(MaxFailures = 5, ResetMs = 60_000, HalfOpenProbes = 1)]
+public interface IAllPoliciesCbOpenService
+{
+    ValueTask<string> GetAsync(string id, CancellationToken ct);
+}
+
 // ── Inner impls ────────────────────────────────────────────────────────────────
 
-public sealed class AlwaysSucceedsImpl : IRetryService, ICircuitService, IRateLimitService, IAllPoliciesService
+public sealed class AlwaysSucceedsImpl
+    : IRetryService, ICircuitService, IRateLimitService, IAllPoliciesService,
+      IAllPoliciesHappyService, IAllPoliciesCbOpenService
 {
     public ValueTask<string> GetAsync(string id, CancellationToken ct)
         => ValueTask.FromResult("ok");
 }
 
-public sealed class AlwaysFailsImpl : ICircuitService
+public sealed class AlwaysFailsImpl : ICircuitService, IAllPoliciesCbOpenService
 {
     public ValueTask<string> GetAsync(string id, CancellationToken ct)
         => throw new InvalidOperationException("always fails");
 }
 
-public sealed class RetryWith2FailuresImpl : IRetryService
+public sealed class RetryWith2FailuresImpl : IRetryService, IAllPoliciesRetryService
 {
     private int _callCount;
     public ValueTask<string> GetAsync(string id, CancellationToken ct)
@@ -67,6 +102,7 @@ public sealed class RetryWith2FailuresImpl : IRetryService
         if (n != 0) throw new InvalidOperationException("simulated failure");
         return ValueTask.FromResult("ok");
     }
+    internal void ResetCallCount() => System.Threading.Volatile.Write(ref _callCount, 0);
 }
 
 public sealed class RetryZeroBackoffWith2FailuresImpl : IRetryZeroBackoffService
