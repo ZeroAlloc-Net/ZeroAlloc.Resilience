@@ -6,8 +6,10 @@ using System.Threading.Tasks;
 using BenchmarkDotNet.Attributes;
 using Polly;
 using Polly.CircuitBreaker;
+using Polly.RateLimiting;
 using Polly.Retry;
 using Polly.Timeout;
+using System.Threading.RateLimiting;
 using ZeroAlloc.Resilience;
 
 namespace ZeroAlloc.Resilience.Benchmarks;
@@ -168,15 +170,40 @@ public class PollyComparisonBenchmark
     public ValueTask<string> Za_RetryBackoffZero_FailTwice()
         => _zaRetryZeroBackoff.GetAsync("x", CancellationToken.None);
 
-    // --- All policies stacked: REMOVED ---
-    //
-    // The ZA IAllPoliciesService interface includes RateLimit with
-    // BurstSize = 1,000,000 — under BDN's pilot phase the cumulative
-    // call rate exceeds the bucket capacity and the rate limiter
-    // (correctly) throws. Polly v8's rate limiter lives in a separate
-    // package (Polly.RateLimiting) with a different surface; an
-    // apples-to-apples all-policies comparison requires a custom
-    // interface that pairs each library's policy stack one-for-one.
-    // Tracked in c:/Projects/Prive/ZeroAlloc/docs/COMPARISON-SWEEP-BACKLOG.md
-    // (search "All-policies stacked comparison deferred").
+    // Builds a Polly v8 4-policy pipeline matching the ZA all-policies interface configs.
+    // Retry's ShouldHandle excludes BrokenCircuitException so the CB-open scenario
+    // measures a single fast-reject per call, not 3× retry against an Open circuit.
+    private static ResiliencePipeline BuildPolly4PolicyPipeline(
+        int cbMinimumThroughput,
+        TimeSpan cbBreakDuration,
+        int rateLimitPermits)
+    {
+        return new ResiliencePipelineBuilder()
+            .AddRetry(new RetryStrategyOptions
+            {
+                MaxRetryAttempts = 2,
+                Delay = TimeSpan.FromMilliseconds(1),
+                BackoffType = DelayBackoffType.Constant,
+                ShouldHandle = new PredicateBuilder()
+                    .Handle<Exception>(e => e is not Polly.CircuitBreaker.BrokenCircuitException),
+            })
+            .AddTimeout(TimeSpan.FromMilliseconds(5_000))
+            .AddRateLimiter(new RateLimiterStrategyOptions
+            {
+                DefaultRateLimiterOptions = new ConcurrencyLimiterOptions
+                {
+                    PermitLimit = rateLimitPermits,
+                    QueueLimit = 0,
+                },
+            })
+            .AddCircuitBreaker(new CircuitBreakerStrategyOptions
+            {
+                FailureRatio = 1.0,
+                MinimumThroughput = cbMinimumThroughput,
+                SamplingDuration = TimeSpan.FromMilliseconds(1_000),
+                BreakDuration = cbBreakDuration,
+                ShouldHandle = new PredicateBuilder().Handle<Exception>(),
+            })
+            .Build();
+    }
 }
