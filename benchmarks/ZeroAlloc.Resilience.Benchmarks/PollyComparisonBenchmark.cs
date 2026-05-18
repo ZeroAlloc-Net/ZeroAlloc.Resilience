@@ -6,8 +6,10 @@ using System.Threading.Tasks;
 using BenchmarkDotNet.Attributes;
 using Polly;
 using Polly.CircuitBreaker;
+using Polly.RateLimiting;
 using Polly.Retry;
 using Polly.Timeout;
+using System.Threading.RateLimiting;
 using ZeroAlloc.Resilience;
 
 namespace ZeroAlloc.Resilience.Benchmarks;
@@ -42,6 +44,20 @@ public class PollyComparisonBenchmark
     private IRetryZeroBackoffService _zaRetryZeroBackoff = null!;
     private ResiliencePipeline _pollyRetryZeroBackoff = null!;
     private RetryZeroBackoffWith2FailuresImpl _pollyZeroBackoffImpl = null!;
+
+    // All-policies stacked: happy path
+    private IAllPoliciesHappyService _zaAllHappy = null!;
+    private ResiliencePipeline _pollyAllHappy = null!;
+
+    // All-policies stacked: retry triggers
+    private IAllPoliciesRetryService _zaAllRetry = null!;
+    private ResiliencePipeline _pollyAllRetry = null!;
+    private RetryWith2FailuresImpl _zaAllRetryImpl = null!;
+    private RetryWith2FailuresImpl _pollyAllRetryImpl = null!;
+
+    // All-policies stacked: CB pre-tripped
+    private IAllPoliciesCbOpenService _zaAllCbOpen = null!;
+    private ResiliencePipeline _pollyAllCbOpen = null!;
 
     [GlobalSetup]
     public void Setup()
@@ -117,6 +133,54 @@ public class PollyComparisonBenchmark
             .Build();
 
         _pollyFailImpl = new RetryWith2FailuresImpl();
+
+        // === All-policies stacked harness ===
+        var maxCbPolicy = new CircuitBreakerPolicy(int.MaxValue, 60_000, 1);
+        var maxRlPolicy = new RateLimiter(int.MaxValue, int.MaxValue, RateLimitScope.Shared);
+        var standardRetryPolicy = new RetryPolicy(3, 1, false, 0);
+        var standardTimeoutPolicy = new TimeoutPolicy(5_000);
+
+        // Happy path
+        _zaAllHappy = new IAllPoliciesHappyServiceResilienceProxy(
+            _inner, standardRetryPolicy, standardTimeoutPolicy, maxRlPolicy, maxCbPolicy);
+        _pollyAllHappy = BuildPolly4PolicyPipeline(
+            int.MaxValue, TimeSpan.FromSeconds(60), int.MaxValue);
+
+        // Retry triggers (inner fails 2/3)
+        _zaAllRetryImpl = new RetryWith2FailuresImpl();
+        _zaAllRetry = new IAllPoliciesRetryServiceResilienceProxy(
+            _zaAllRetryImpl, standardRetryPolicy, standardTimeoutPolicy, maxRlPolicy, maxCbPolicy);
+        _pollyAllRetryImpl = new RetryWith2FailuresImpl();
+        _pollyAllRetry = BuildPolly4PolicyPipeline(
+            int.MaxValue, TimeSpan.FromSeconds(60), int.MaxValue);
+
+        // CB pre-tripped
+        var lowCbPolicy = new CircuitBreakerPolicy(5, 60_000, 1);
+        var cbOpenZaImpl = new AlwaysFailsImpl();
+        _zaAllCbOpen = new IAllPoliciesCbOpenServiceResilienceProxy(
+            cbOpenZaImpl, standardRetryPolicy, standardTimeoutPolicy, maxRlPolicy, lowCbPolicy);
+        _pollyAllCbOpen = BuildPolly4PolicyPipeline(5, TimeSpan.FromSeconds(60), int.MaxValue);
+
+        // Pre-trip both CBs by calling them past MaxFailures with a failing impl.
+        for (int i = 0; i < 10; i++)
+        {
+            try { _ = _zaAllCbOpen.GetAsync("trip", CancellationToken.None).GetAwaiter().GetResult(); }
+            catch { /* expected — inner throws */ }
+            try
+            {
+                _ = _pollyAllCbOpen.ExecuteAsync(
+                    async ct => await cbOpenZaImpl.GetAsync("trip", ct), CancellationToken.None)
+                    .GetAwaiter().GetResult();
+            }
+            catch { /* expected */ }
+        }
+    }
+
+    [IterationSetup(Targets = new[] { nameof(Polly_AllPolicies_Retry), nameof(Za_AllPolicies_Retry) })]
+    public void ResetAllPoliciesRetryCounters()
+    {
+        _zaAllRetryImpl.ResetCallCount();
+        _pollyAllRetryImpl.ResetCallCount();
     }
 
     // --- Retry, no failure (happy path) ---
@@ -168,15 +232,97 @@ public class PollyComparisonBenchmark
     public ValueTask<string> Za_RetryBackoffZero_FailTwice()
         => _zaRetryZeroBackoff.GetAsync("x", CancellationToken.None);
 
-    // --- All policies stacked: REMOVED ---
-    //
-    // The ZA IAllPoliciesService interface includes RateLimit with
-    // BurstSize = 1,000,000 — under BDN's pilot phase the cumulative
-    // call rate exceeds the bucket capacity and the rate limiter
-    // (correctly) throws. Polly v8's rate limiter lives in a separate
-    // package (Polly.RateLimiting) with a different surface; an
-    // apples-to-apples all-policies comparison requires a custom
-    // interface that pairs each library's policy stack one-for-one.
-    // Tracked in c:/Projects/Prive/ZeroAlloc/docs/COMPARISON-SWEEP-BACKLOG.md
-    // (search "All-policies stacked comparison deferred").
+    // --- All policies stacked: happy path ---
+
+    [Benchmark(Description = "Polly: All-policies stacked, happy path")]
+    [BenchmarkCategory("AllPoliciesHappy")]
+    public async ValueTask<string> Polly_AllPolicies_Happy()
+        => await _pollyAllHappy.ExecuteAsync(
+            async ct => await _inner.GetAsync("x", ct), CancellationToken.None);
+
+    [Benchmark(Description = "ZA.Resilience: All-policies stacked, happy path")]
+    [BenchmarkCategory("AllPoliciesHappy")]
+    public ValueTask<string> Za_AllPolicies_Happy()
+        => _zaAllHappy.GetAsync("x", CancellationToken.None);
+
+    // --- All policies stacked: retry triggers (inner fails 2/3) ---
+
+    [Benchmark(Description = "Polly: All-policies stacked, retry triggers")]
+    [BenchmarkCategory("AllPoliciesRetry")]
+    public async ValueTask<string> Polly_AllPolicies_Retry()
+        => await _pollyAllRetry.ExecuteAsync(
+            async ct => await _pollyAllRetryImpl.GetAsync("x", ct), CancellationToken.None);
+
+    [Benchmark(Description = "ZA.Resilience: All-policies stacked, retry triggers")]
+    [BenchmarkCategory("AllPoliciesRetry")]
+    public ValueTask<string> Za_AllPolicies_Retry()
+        => _zaAllRetry.GetAsync("x", CancellationToken.None);
+
+    // --- All policies stacked: CB pre-tripped (fast-reject) ---
+
+    [Benchmark(Description = "Polly: All-policies stacked, CB open (fast-reject)")]
+    [BenchmarkCategory("AllPoliciesCbOpen")]
+    public async ValueTask<string> Polly_AllPolicies_CbOpen()
+    {
+        try
+        {
+            return await _pollyAllCbOpen.ExecuteAsync(
+                async ct => await new ValueTask<string>("never reached"), CancellationToken.None);
+        }
+        catch (Polly.CircuitBreaker.BrokenCircuitException)
+        {
+            return "open";
+        }
+    }
+
+    [Benchmark(Description = "ZA.Resilience: All-policies stacked, CB open (fast-reject)")]
+    [BenchmarkCategory("AllPoliciesCbOpen")]
+    public async ValueTask<string> Za_AllPolicies_CbOpen()
+    {
+        try
+        {
+            return await _zaAllCbOpen.GetAsync("x", CancellationToken.None);
+        }
+        catch (ResilienceException)
+        {
+            return "open";
+        }
+    }
+
+    // Builds a Polly v8 4-policy pipeline matching the ZA all-policies interface configs.
+    // Retry's ShouldHandle excludes BrokenCircuitException so the CB-open scenario
+    // measures a single fast-reject per call, not 3× retry against an Open circuit.
+    private static ResiliencePipeline BuildPolly4PolicyPipeline(
+        int cbMinimumThroughput,
+        TimeSpan cbBreakDuration,
+        int rateLimitPermits)
+    {
+        return new ResiliencePipelineBuilder()
+            .AddRetry(new RetryStrategyOptions
+            {
+                MaxRetryAttempts = 2,
+                Delay = TimeSpan.FromMilliseconds(1),
+                BackoffType = DelayBackoffType.Constant,
+                ShouldHandle = new PredicateBuilder()
+                    .Handle<Exception>(e => e is not Polly.CircuitBreaker.BrokenCircuitException),
+            })
+            .AddTimeout(TimeSpan.FromMilliseconds(5_000))
+            .AddRateLimiter(new RateLimiterStrategyOptions
+            {
+                DefaultRateLimiterOptions = new ConcurrencyLimiterOptions
+                {
+                    PermitLimit = rateLimitPermits,
+                    QueueLimit = 0,
+                },
+            })
+            .AddCircuitBreaker(new CircuitBreakerStrategyOptions
+            {
+                FailureRatio = 1.0,
+                MinimumThroughput = cbMinimumThroughput,
+                SamplingDuration = TimeSpan.FromMilliseconds(1_000),
+                BreakDuration = cbBreakDuration,
+                ShouldHandle = new PredicateBuilder().Handle<Exception>(),
+            })
+            .Build();
+    }
 }
