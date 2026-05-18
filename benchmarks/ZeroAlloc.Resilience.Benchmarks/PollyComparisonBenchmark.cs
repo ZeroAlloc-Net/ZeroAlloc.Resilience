@@ -232,6 +232,63 @@ public class PollyComparisonBenchmark
     public ValueTask<string> Za_RetryBackoffZero_FailTwice()
         => _zaRetryZeroBackoff.GetAsync("x", CancellationToken.None);
 
+    // --- All policies stacked: happy path ---
+
+    [Benchmark(Description = "Polly: All-policies stacked, happy path")]
+    [BenchmarkCategory("AllPoliciesHappy")]
+    public async ValueTask<string> Polly_AllPolicies_Happy()
+        => await _pollyAllHappy.ExecuteAsync(
+            async ct => await _inner.GetAsync("x", ct), CancellationToken.None);
+
+    [Benchmark(Description = "ZA.Resilience: All-policies stacked, happy path")]
+    [BenchmarkCategory("AllPoliciesHappy")]
+    public ValueTask<string> Za_AllPolicies_Happy()
+        => _zaAllHappy.GetAsync("x", CancellationToken.None);
+
+    // --- All policies stacked: retry triggers (inner fails 2/3) ---
+
+    [Benchmark(Description = "Polly: All-policies stacked, retry triggers")]
+    [BenchmarkCategory("AllPoliciesRetry")]
+    public async ValueTask<string> Polly_AllPolicies_Retry()
+        => await _pollyAllRetry.ExecuteAsync(
+            async ct => await _pollyAllRetryImpl.GetAsync("x", ct), CancellationToken.None);
+
+    [Benchmark(Description = "ZA.Resilience: All-policies stacked, retry triggers")]
+    [BenchmarkCategory("AllPoliciesRetry")]
+    public ValueTask<string> Za_AllPolicies_Retry()
+        => _zaAllRetry.GetAsync("x", CancellationToken.None);
+
+    // --- All policies stacked: CB pre-tripped (fast-reject) ---
+
+    [Benchmark(Description = "Polly: All-policies stacked, CB open (fast-reject)")]
+    [BenchmarkCategory("AllPoliciesCbOpen")]
+    public async ValueTask<string> Polly_AllPolicies_CbOpen()
+    {
+        try
+        {
+            return await _pollyAllCbOpen.ExecuteAsync(
+                async ct => await new ValueTask<string>("never reached"), CancellationToken.None);
+        }
+        catch (Polly.CircuitBreaker.BrokenCircuitException)
+        {
+            return "open";
+        }
+    }
+
+    [Benchmark(Description = "ZA.Resilience: All-policies stacked, CB open (fast-reject)")]
+    [BenchmarkCategory("AllPoliciesCbOpen")]
+    public async ValueTask<string> Za_AllPolicies_CbOpen()
+    {
+        try
+        {
+            return await _zaAllCbOpen.GetAsync("x", CancellationToken.None);
+        }
+        catch (ResilienceException)
+        {
+            return "open";
+        }
+    }
+
     // Builds a Polly v8 4-policy pipeline matching the ZA all-policies interface configs.
     // Retry's ShouldHandle excludes BrokenCircuitException so the CB-open scenario
     // measures a single fast-reject per call, not 3× retry against an Open circuit.
