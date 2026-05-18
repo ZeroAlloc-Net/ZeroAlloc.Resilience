@@ -11,7 +11,7 @@ ZeroAlloc.Resilience is designed so that the proxy adds **zero heap allocation**
 ## Head-to-head vs Polly v8
 
 <!-- BENCH:START -->
-_Last refreshed: 2026-05-13_
+_Last refreshed: 2026-05-18_
 
 [Polly](https://github.com/App-vNext/Polly) v8 (`ResiliencePipeline`) is the de-facto resilience library in .NET. ZA.Resilience's source-generated proxy beats it on both throughput and allocation for the policies both libraries support apples-to-apples.
 
@@ -21,12 +21,17 @@ _Last refreshed: 2026-05-13_
 | CircuitBreaker, closed | 776 ns / 64 B | **17 ns / 0 B** | **45× faster, 0 B alloc** |
 | Retry with 2/3 failures | 22.86 ms / 3,134 B | 27.89 ms / 948 B | 22% slower wall-clock, **3.3× less alloc** |
 | Retry with 2/3 failures, **backoff=0** (isolates loop overhead) | 12.80 µs / 1,984 B | **7.31 µs / 576 B** | **43% faster, 71% less alloc** |
+| All-policies stacked, happy path | 1,283 ns / 104 B | **126 ns / 144 B** | **10× faster** |
+| All-policies stacked, retry triggers (2/3 fail) | 29.31 ms | 28.83 ms | parity (Task.Delay floor) |
+| All-policies stacked, CB open (fast-reject) | **3.97 µs / 40 B** | 5.16 µs / 912 B | Polly wins — see narrative below |
 
 The happy-path gap is driven by Polly's `ResiliencePipeline.ExecuteAsync` walking the strategy chain via delegate dispatch and allocating a `ResilienceContext` per call (64 B). ZA emits one direct method per interface — the retry/CB checks are inline `if` statements and `Volatile.Read` calls. No context object, no closure, no delegate.
 
 The retry-with-failures row at 1 ms backoff shows ZA 22% slower wall-clock. **Phase-1 investigation (backoff=0 micro-bench, 2026-05-18) confirms the retry loop itself is competitive — at `Task.Delay(0)` ZA is *faster* than Polly (7.31 µs vs 12.80 µs, 43% lower) with 71% less allocation.** The 22% gap on the 1 ms-backoff row is `Task.Delay` Windows timer-tick alignment (each `Task.Delay(1ms)` wakes ~16 ms later due to system timer resolution) plus scheduler-thread continuation handoff — both framework-bound, not ZA loop overhead.
 
-**Note on all-policies stacked comparison**: deferred. The two libraries' rate-limiter policies have different surface (Polly.RateLimiting is a separate package, ZA's RateLimit is part of the main package), so an apples-to-apples 4-policy comparison requires a custom harness. The Retry + CB pairings above are the most-cited isolated scenarios; see the self-benchmark table for ZA's all-policies stack.
+**All-policies stacked comparison.** Three rows compare a 4-policy stack (Retry + Timeout + RateLimit + CircuitBreaker). **Happy path** measures cumulative dispatch overhead — ZA wins by ~10× because the generator emits one flat method with inline policy checks (`Volatile.Read` + integer comparisons), while Polly's `ResiliencePipeline.ExecuteAsync` walks the strategy chain with delegate dispatch. **Retry triggers** measures the most realistic prod failure mode — inner fails 2/3, retry recovers; both libraries hit the same Windows-timer-tick floor on `Task.Delay(1ms)` so wall-clock is at parity. **CB open (fast-reject)** measures the steady-state cost when the circuit is open: **Polly wins** because we explicitly excluded `BrokenCircuitException` from Polly's retry `ShouldHandle` — Polly does a single fast-reject per call. ZA's generated retry catches `ResilienceException` (which the CB raises) and retries 3× through the still-Open circuit, accumulating 912 B of state-machine allocations across the attempts. This is a real cost difference, not a measurement artifact — and arguably a correctness consideration: applications using ZA where the CB-open scenario matters should disable retry-on-CB-broken in user code, which the current generator doesn't surface as a knob (tracked for follow-up).
+
+Rate-limit and timeout limits in the all-policies harness are set to `int.MaxValue` permits / 60s ResetMs so neither policy trips during measurement. The rate-limiter apples-to-apples comparison is deferred because the two libraries' rate-limiter implementations differ (Polly wraps `System.Threading.RateLimiting.ConcurrencyLimiter`; ZA has its own throughput-based impl).
 <!-- BENCH:END -->
 
 ## Self-benchmark (all ZA scenarios)
