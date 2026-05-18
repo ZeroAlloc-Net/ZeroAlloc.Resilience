@@ -45,6 +45,20 @@ public class PollyComparisonBenchmark
     private ResiliencePipeline _pollyRetryZeroBackoff = null!;
     private RetryZeroBackoffWith2FailuresImpl _pollyZeroBackoffImpl = null!;
 
+    // All-policies stacked: happy path
+    private IAllPoliciesHappyService _zaAllHappy = null!;
+    private ResiliencePipeline _pollyAllHappy = null!;
+
+    // All-policies stacked: retry triggers
+    private IAllPoliciesRetryService _zaAllRetry = null!;
+    private ResiliencePipeline _pollyAllRetry = null!;
+    private RetryWith2FailuresImpl _zaAllRetryImpl = null!;
+    private RetryWith2FailuresImpl _pollyAllRetryImpl = null!;
+
+    // All-policies stacked: CB pre-tripped
+    private IAllPoliciesCbOpenService _zaAllCbOpen = null!;
+    private ResiliencePipeline _pollyAllCbOpen = null!;
+
     [GlobalSetup]
     public void Setup()
     {
@@ -119,6 +133,54 @@ public class PollyComparisonBenchmark
             .Build();
 
         _pollyFailImpl = new RetryWith2FailuresImpl();
+
+        // === All-policies stacked harness ===
+        var maxCbPolicy = new CircuitBreakerPolicy(int.MaxValue, 60_000, 1);
+        var maxRlPolicy = new RateLimiter(int.MaxValue, int.MaxValue, RateLimitScope.Shared);
+        var standardRetryPolicy = new RetryPolicy(3, 1, false, 0);
+        var standardTimeoutPolicy = new TimeoutPolicy(5_000);
+
+        // Happy path
+        _zaAllHappy = new IAllPoliciesHappyServiceResilienceProxy(
+            _inner, standardRetryPolicy, standardTimeoutPolicy, maxRlPolicy, maxCbPolicy);
+        _pollyAllHappy = BuildPolly4PolicyPipeline(
+            int.MaxValue, TimeSpan.FromSeconds(60), int.MaxValue);
+
+        // Retry triggers (inner fails 2/3)
+        _zaAllRetryImpl = new RetryWith2FailuresImpl();
+        _zaAllRetry = new IAllPoliciesRetryServiceResilienceProxy(
+            _zaAllRetryImpl, standardRetryPolicy, standardTimeoutPolicy, maxRlPolicy, maxCbPolicy);
+        _pollyAllRetryImpl = new RetryWith2FailuresImpl();
+        _pollyAllRetry = BuildPolly4PolicyPipeline(
+            int.MaxValue, TimeSpan.FromSeconds(60), int.MaxValue);
+
+        // CB pre-tripped
+        var lowCbPolicy = new CircuitBreakerPolicy(5, 60_000, 1);
+        var cbOpenZaImpl = new AlwaysFailsImpl();
+        _zaAllCbOpen = new IAllPoliciesCbOpenServiceResilienceProxy(
+            cbOpenZaImpl, standardRetryPolicy, standardTimeoutPolicy, maxRlPolicy, lowCbPolicy);
+        _pollyAllCbOpen = BuildPolly4PolicyPipeline(5, TimeSpan.FromSeconds(60), int.MaxValue);
+
+        // Pre-trip both CBs by calling them past MaxFailures with a failing impl.
+        for (int i = 0; i < 10; i++)
+        {
+            try { _ = _zaAllCbOpen.GetAsync("trip", CancellationToken.None).GetAwaiter().GetResult(); }
+            catch { /* expected — inner throws */ }
+            try
+            {
+                _ = _pollyAllCbOpen.ExecuteAsync(
+                    async ct => await cbOpenZaImpl.GetAsync("trip", ct), CancellationToken.None)
+                    .GetAwaiter().GetResult();
+            }
+            catch { /* expected */ }
+        }
+    }
+
+    [IterationSetup(Targets = new[] { nameof(Polly_AllPolicies_Retry), nameof(Za_AllPolicies_Retry) })]
+    public void ResetAllPoliciesRetryCounters()
+    {
+        _zaAllRetryImpl.ResetCallCount();
+        _pollyAllRetryImpl.ResetCallCount();
     }
 
     // --- Retry, no failure (happy path) ---
