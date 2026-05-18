@@ -38,6 +38,11 @@ public class PollyComparisonBenchmark
     private ResiliencePipeline _pollyAllPolicies = null!;
     private RetryWith2FailuresImpl _pollyFailImpl = null!;
 
+    // Zero-backoff comparison (isolates loop overhead from Task.Delay wall-clock)
+    private IRetryZeroBackoffService _zaRetryZeroBackoff = null!;
+    private ResiliencePipeline _pollyRetryZeroBackoff = null!;
+    private RetryZeroBackoffWith2FailuresImpl _pollyZeroBackoffImpl = null!;
+
     [GlobalSetup]
     public void Setup()
     {
@@ -95,6 +100,22 @@ public class PollyComparisonBenchmark
             })
             .Build();
 
+        // Zero-backoff retry pair — isolates loop overhead from Task.Delay timer cost.
+        var zeroBackoffPolicy = new RetryPolicy(3, 0, false, 0);
+        _zaRetryZeroBackoff = new IRetryZeroBackoffServiceResilienceProxy(
+            new RetryZeroBackoffWith2FailuresImpl(), zeroBackoffPolicy, new TimeoutPolicy(5_000));
+
+        _pollyZeroBackoffImpl = new RetryZeroBackoffWith2FailuresImpl();
+        _pollyRetryZeroBackoff = new ResiliencePipelineBuilder()
+            .AddRetry(new RetryStrategyOptions
+            {
+                MaxRetryAttempts = 2,                       // 3 total attempts (2 retries + 1 original)
+                Delay = TimeSpan.Zero,
+                BackoffType = DelayBackoffType.Constant,
+                ShouldHandle = new PredicateBuilder().Handle<Exception>(),
+            })
+            .Build();
+
         _pollyFailImpl = new RetryWith2FailuresImpl();
     }
 
@@ -133,6 +154,19 @@ public class PollyComparisonBenchmark
     [BenchmarkCategory("RetryWithFailures")]
     public ValueTask<string> Za_RetryFailTwice()
         => _zaRetryFailTwice.GetAsync("x", CancellationToken.None);
+
+    // --- Retry with 2/3 failures, ZERO backoff (isolates loop overhead) ---
+
+    [Benchmark(Description = "Polly: Retry backoff=0 (2/3 fail)")]
+    [BenchmarkCategory("RetryBackoffZero")]
+    public async ValueTask<string> Polly_RetryBackoffZero_FailTwice()
+        => await _pollyRetryZeroBackoff.ExecuteAsync(
+            async ct => await _pollyZeroBackoffImpl.GetAsync("x", ct), CancellationToken.None);
+
+    [Benchmark(Description = "ZA.Resilience: Retry backoff=0 (2/3 fail)")]
+    [BenchmarkCategory("RetryBackoffZero")]
+    public ValueTask<string> Za_RetryBackoffZero_FailTwice()
+        => _zaRetryZeroBackoff.GetAsync("x", CancellationToken.None);
 
     // --- All policies stacked: REMOVED ---
     //
