@@ -16,6 +16,13 @@ public interface IRetryService
     ValueTask<string> GetAsync(string id, CancellationToken ct);
 }
 
+[Retry(MaxAttempts = 3, BackoffMs = 0)]
+[Timeout(Ms = 5_000)]
+public interface IRetryZeroBackoffService
+{
+    ValueTask<string> GetAsync(string id, CancellationToken ct);
+}
+
 [CircuitBreaker(MaxFailures = 5, ResetMs = 1000, HalfOpenProbes = 1)]
 public interface ICircuitService
 {
@@ -52,6 +59,17 @@ public sealed class AlwaysFailsImpl : ICircuitService
 }
 
 public sealed class RetryWith2FailuresImpl : IRetryService
+{
+    private int _callCount;
+    public ValueTask<string> GetAsync(string id, CancellationToken ct)
+    {
+        var n = System.Threading.Interlocked.Increment(ref _callCount) % 3;
+        if (n != 0) throw new InvalidOperationException("simulated failure");
+        return ValueTask.FromResult("ok");
+    }
+}
+
+public sealed class RetryZeroBackoffWith2FailuresImpl : IRetryZeroBackoffService
 {
     private int _callCount;
     public ValueTask<string> GetAsync(string id, CancellationToken ct)
