@@ -15,7 +15,7 @@
     <PackageReference Include="ZeroAlloc.Pipeline" Version="0.1.6" />
     <PackageReference Include="ZeroAlloc.Collections" Version="0.1.5" />
     <PackageReference Include="ZeroAlloc.Results" Version="0.1.4" />
-    <PackageReference Include="Microsoft.CodeAnalysis.PublicApiAnalyzers" Version="4.14.0">
+    <PackageReference Include="Microsoft.CodeAnalysis.PublicApiAnalyzers" Version="5.6.0">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
