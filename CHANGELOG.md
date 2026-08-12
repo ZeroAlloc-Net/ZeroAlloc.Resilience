@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.1](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v1.3.0...v1.3.1) (2026-08-12)
+
+
+### Bug Fixes
+
+* inject the clock into RateLimiter, making refill tests deterministic ([#61](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/61)) ([d19d134](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/d19d134eb01bea5f53d7a2676b45057ebe94b060))
+
 ## [1.3.0](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v1.2.2...v1.3.0) (2026-05-13)
 
 
