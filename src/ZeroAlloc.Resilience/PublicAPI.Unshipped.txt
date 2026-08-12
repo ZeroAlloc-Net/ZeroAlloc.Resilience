@@ -42,6 +42,7 @@ ZeroAlloc.Resilience.RateLimitScope.Instance = 1 -> ZeroAlloc.Resilience.RateLim
 ZeroAlloc.Resilience.RateLimitScope.Shared = 0 -> ZeroAlloc.Resilience.RateLimitScope
 ZeroAlloc.Resilience.RateLimiter
 ZeroAlloc.Resilience.RateLimiter.RateLimiter(int maxPerSecond, int burstSize, ZeroAlloc.Resilience.RateLimitScope scope) -> void
+ZeroAlloc.Resilience.RateLimiter.RateLimiter(int maxPerSecond, int burstSize, ZeroAlloc.Resilience.RateLimitScope scope, System.TimeProvider! timeProvider) -> void
 ZeroAlloc.Resilience.RateLimiter.Scope.get -> ZeroAlloc.Resilience.RateLimitScope
 ZeroAlloc.Resilience.RateLimiter.TryAcquire() -> bool
 ZeroAlloc.Resilience.ResilienceError
