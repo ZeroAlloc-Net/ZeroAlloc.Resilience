@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Time.Testing;
 using System.Threading.Tasks;
 using ZeroAlloc.Resilience;
 
@@ -16,19 +17,33 @@ public class RateLimiterTests
     }
 
     [Fact]
-    public async Task AfterDelay_TokensRefill()
+    public void AfterElapsedTime_TokensRefill()
     {
-        // 10/s, so one token per 100ms. NOT 100/s: that refills every 10ms, which is inside
-        // the granularity of Environment.TickCount64 (~15ms on Windows) that RateLimiter reads.
-        // A single clock tick then refilled a whole token, so the "bucket is now empty"
-        // assertion below raced the clock and failed roughly two runs in five.
-        var limiter = new RateLimiter(maxPerSecond: 10, burstSize: 1, scope: RateLimitScope.Shared);
+        // Deterministic: the limiter reads this clock, so no wall-clock timing is involved.
+        // The previous version ran at 100/s against Environment.TickCount64, whose ~15ms
+        // granularity exceeded the 10ms refill interval -- a single tick handed back a whole
+        // token and the "bucket is empty" assertion failed roughly two runs in five.
+        var time = new FakeTimeProvider();
+        var limiter = new RateLimiter(maxPerSecond: 100, burstSize: 1, RateLimitScope.Shared, time);
 
         limiter.TryAcquire().Should().BeTrue();   // consumes the burst token
-        limiter.TryAcquire().Should().BeFalse();  // empty — has 100ms of slack, not 10ms
+        limiter.TryAcquire().Should().BeFalse();  // empty, and the clock cannot have moved
 
-        await Task.Delay(200); // >= 2 tokens at 10/s, so the wait cannot be marginal either
+        time.Advance(TimeSpan.FromMilliseconds(50)); // exactly 5 tokens at 100/s
         limiter.TryAcquire().Should().BeTrue();
+    }
+
+    [Fact]
+    public void BeforeRefillInterval_StaysEmpty()
+    {
+        // The other half of the contract, which wall-clock timing could never assert:
+        // just under one token's worth of time must refill nothing.
+        var time = new FakeTimeProvider();
+        var limiter = new RateLimiter(maxPerSecond: 100, burstSize: 1, RateLimitScope.Shared, time);
+
+        limiter.TryAcquire().Should().BeTrue();
+        time.Advance(TimeSpan.FromMilliseconds(9)); // one token needs 10ms
+        limiter.TryAcquire().Should().BeFalse();
     }
 
     [Fact]
