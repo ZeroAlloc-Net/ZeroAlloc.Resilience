@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.2](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v1.3.1...v1.3.2) (2026-09-19)
+
+
+### Bug Fixes
+
+* **ci:** stamp the assembly version when publishing from a manifest ([#122](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/122)) ([a3c932c](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/a3c932c4cd2f20576c0d75698d97631d364b27ed))
+
 ## [1.3.1](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v1.3.0...v1.3.1) (2026-08-12)
 
 
