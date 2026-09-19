@@ -5,7 +5,7 @@ using ZeroAlloc.Resilience.Generator.Tests;
 public class SnapshotTests
 {
     [Fact]
-    public Task Retry_Only_GeneratesProxy()
+    public void Retry_Only_GeneratesProxy()
     {
         var source = """
             using ZeroAlloc.Resilience;
@@ -18,11 +18,11 @@ public class SnapshotTests
                 ValueTask<string> GetAsync(string id, CancellationToken ct);
             }
             """;
-        return TestHelper.Verify<ResilienceGenerator>(source);
+        TestHelper.Verify<ResilienceGenerator>(source);
     }
 
     [Fact]
-    public Task AllPolicies_ClassLevel_GeneratesProxy()
+    public void AllPolicies_ClassLevel_GeneratesProxy()
     {
         var source = """
             using ZeroAlloc.Resilience;
@@ -39,11 +39,11 @@ public class SnapshotTests
                 ValueTask<string> FetchFallback(string id, CancellationToken ct);
             }
             """;
-        return TestHelper.Verify<ResilienceGenerator>(source);
+        TestHelper.Verify<ResilienceGenerator>(source);
     }
 
     [Fact]
-    public Task MethodLevel_Override_GeneratesProxy()
+    public void MethodLevel_Override_GeneratesProxy()
     {
         var source = """
             using ZeroAlloc.Resilience;
@@ -60,11 +60,11 @@ public class SnapshotTests
                 ValueTask PostAsync(string data, CancellationToken ct);
             }
             """;
-        return TestHelper.Verify<ResilienceGenerator>(source);
+        TestHelper.Verify<ResilienceGenerator>(source);
     }
 
     [Fact]
-    public Task CircuitBreaker_WithFallback_GeneratesProxy()
+    public void CircuitBreaker_WithFallback_GeneratesProxy()
     {
         var source = """
             using ZeroAlloc.Resilience;
@@ -78,6 +78,6 @@ public class SnapshotTests
                 ValueTask<string> FetchFallback(string id, CancellationToken ct);
             }
             """;
-        return TestHelper.Verify<ResilienceGenerator>(source);
+        TestHelper.Verify<ResilienceGenerator>(source);
     }
 }
