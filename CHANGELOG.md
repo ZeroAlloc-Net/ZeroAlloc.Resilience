@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.4](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v1.3.3...v1.3.4) (2026-09-20)
+
+
+### Bug Fixes
+
+* drop the project reference that points outside the repository ([#129](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/129)) ([abe8060](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/abe806015f0f77c2c10dfe646b1942207e98857b))
+
 ## [1.3.3](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v1.3.2...v1.3.3) (2026-09-20)
 
 
