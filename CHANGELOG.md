@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.3](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v1.3.2...v1.3.3) (2026-09-20)
+
+
+### Bug Fixes
+
+* declare current sibling package versions ([#127](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/127)) ([4513e6b](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/4513e6b4e97de4ab859ebf1e925539bf4a0b21c5))
+
 ## [1.3.2](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v1.3.1...v1.3.2) (2026-09-19)
 
 
