@@ -102,6 +102,3 @@ jobs:
 
   api-compat:
     uses: ZeroAlloc-Net/.github/.github/workflows/api-compat.yml@main
-    with:
-      package-id: ZeroAlloc.Resilience
-      csproj-path: src/ZeroAlloc.Resilience/ZeroAlloc.Resilience.csproj
