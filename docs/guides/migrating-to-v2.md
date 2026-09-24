@@ -9,9 +9,30 @@ sidebar_position: 5
 2.0 changes how policies reach the generated proxy. Each interface now has a generated
 `{Name}ResiliencePolicies` class, and the proxy reads every value from it at call time.
 
-## If you only call `Add{Name}Resilience<TImpl>()`
+## If you only call `Add{Name}Resilience<TImpl>()` and never resolve a policy type yourself
 
 Nothing to change. Your policies are now isolated per interface and configurable.
+
+## If you registered policy objects yourself
+
+In 1.x the proxy factory resolved the unkeyed `RetryPolicy`, `TimeoutPolicy`, `RateLimiter` and
+`CircuitBreakerPolicy` from the container, so an application that registered its own instance saw
+it used. In 2.0 the proxy never reads those types from the container — it only reads its
+generated `{Name}ResiliencePolicies` singleton. Code that resolves the policy types directly, for
+example `GetRequiredService<RetryPolicy>()` after calling `Add{Name}Resilience`, now throws
+because nothing registers them.
+
+```csharp
+// 1.x — the proxy picked this up from the container
+services.AddSingleton(new RetryPolicy(5, 100, false, 0));
+services.AddJevApiResilience<JevApi>();
+
+// 2.0
+services.AddJevApiResilience<JevApi>((sp, p) => p.Retry = new RetryPolicy(5, 100, false, 0));
+```
+
+Resolving `RetryPolicy`, `TimeoutPolicy`, `RateLimiter` or `CircuitBreakerPolicy` from the
+container now fails unless you register them yourself; the proxy never reads them.
 
 ## Configuring values at runtime
 
@@ -63,3 +84,4 @@ registrations with `Add{Name}ResiliencePolicies()`.
 | Method-level `[CircuitBreaker]`/`[RateLimit]` | shared the interface instance and its settings | own instance, own settings, own state |
 | `RateLimitScope.Instance` | behaved like `Shared` | one limiter per proxy instance |
 | Invalid policy arguments, for example `MaxAttempts = 0` | produced a proxy that never called the inner service | `ArgumentOutOfRangeException` when the policies are built |
+| Name derivation for interfaces like IInvoiceApi | every leading I stripped: AddnvoiceApiResilience | one I stripped before an uppercase letter: AddInvoiceApiResilience |

@@ -83,13 +83,19 @@ public static partial class ResilienceServiceCollectionExtensions
 
 ## Naming convention
 
-The extension method name is `Add{InterfaceName.TrimStart('I')}Resilience<TImpl>`, and the policies class is `{InterfaceName.TrimStart('I')}ResiliencePolicies`:
+The generator strips one leading `I` from the interface name, but only when an uppercase letter
+follows it — the common "interface I-prefix" convention — and uses the result to name the
+extension method `Add{ServiceName}Resilience<TImpl>` and the policies class
+`{ServiceName}ResiliencePolicies`. An `I` that is not followed by an uppercase letter, such as the
+`I` in `Item`, is kept:
 
 | Interface | Extension method | Policies class |
 |-----------|-----------------|-----------------|
 | `IExternalService` | `AddExternalServiceResilience<TImpl>()` | `ExternalServiceResiliencePolicies` |
+| `IInvoiceApi` | `AddInvoiceApiResilience<TImpl>()` | `InvoiceApiResiliencePolicies` |
 | `IPaymentGateway` | `AddPaymentGatewayResilience<TImpl>()` | `PaymentGatewayResiliencePolicies` |
 | `DataStore` (no leading I) | `AddDataStoreResilience<TImpl>()` | `DataStoreResiliencePolicies` |
+| `Item` (I not followed by an uppercase letter) | `AddItemResilience<TImpl>()` | `ItemResiliencePolicies` |
 
 ---
 
@@ -110,6 +116,8 @@ builder.Services.AddExternalServiceResilience<ExternalServiceImpl>((sp, p) =>
 `configure` can only change the value of a slot the interface already declares. It cannot add a policy the attributes do not declare — whether a method has a retry loop, a timeout, a rate-limit check or a circuit check is fixed when the generator runs, not by `configure`.
 
 A per-attempt timeout (`RetryPolicy.PerAttemptTimeoutMs`) set only through `configure` has no effect on a method with no `CancellationToken` parameter — the generator only emits the per-attempt cancellation source for methods that can take a token. ZR0002 warns about a per-attempt timeout with no `CancellationToken` parameter, but only when the attribute itself asks for one; it does not know what `configure` will set at runtime, so it cannot warn about that case.
+
+Calling `Add{Name}Resilience` or `Add{Name}ResiliencePolicies` a second time with another `configure` has no effect, because the policies are registered once with `TryAdd`; put all configuration in one callback.
 
 ---
 
