@@ -82,6 +82,7 @@ ZeroAlloc.Resilience.RetryPolicy.BackoffMs.get -> int
 ZeroAlloc.Resilience.RetryPolicy.GetBackoffMs(int attempt) -> int
 ZeroAlloc.Resilience.RetryPolicy.Jitter.get -> bool
 ZeroAlloc.Resilience.RetryPolicy.MaxAttempts.get -> int
+const ZeroAlloc.Resilience.RetryPolicy.MaxBackoffMs = 2147483646 -> int
 ZeroAlloc.Resilience.RetryPolicy.PerAttemptTimeoutMs.get -> int
 ZeroAlloc.Resilience.RetryPolicy.RetryPolicy(int maxAttempts, int backoffMs, bool jitter, int perAttemptTimeoutMs) -> void
 ZeroAlloc.Resilience.TimeoutAttribute
