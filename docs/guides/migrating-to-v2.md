@@ -83,5 +83,5 @@ registrations with `Add{Name}ResiliencePolicies()`.
 | Two interfaces with `[CircuitBreaker]` | shared one circuit | independent circuits |
 | Method-level `[CircuitBreaker]`/`[RateLimit]` | shared the interface instance and its settings | own instance, own settings, own state |
 | `RateLimitScope.Instance` | behaved like `Shared` | one limiter per proxy instance |
-| Invalid policy arguments, for example `MaxAttempts = 0` | produced a proxy that never called the inner service | `ArgumentOutOfRangeException` when the policies are built |
+| Invalid attribute values, for example `MaxAttempts = 0` | the proxy never called the inner service | error ZR0004 at build time |
 | Name derivation for interfaces like IInvoiceApi | every leading I stripped: AddnvoiceApiResilience | one I stripped before an uppercase letter: AddInvoiceApiResilience |
