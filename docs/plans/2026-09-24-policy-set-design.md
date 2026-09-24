@@ -111,7 +111,7 @@ internal sealed class IJevApiResilienceProxy : IJevApi
 ```
 
 - **Snapshot.** Each slot is copied into a `readonly` field, and a null slot throws `ArgumentException` naming the slot.
-- **`RateLimitScope.Instance`.** For a slot whose limiter has `Scope == Instance`, the constructor creates a new `RateLimiter(slot.MaxPerSecond, slot.BurstSize, RateLimitScope.Instance)` for this proxy. That needs two new public getters on `RateLimiter`: `MaxPerSecond` and `BurstSize`. `Shared` limiters use the slot's instance.
+- **`RateLimitScope.Instance`.** The constructor stores `slot.ForProxyInstance()`, a new public method on `RateLimiter`. It returns the limiter itself when `Scope == Shared`, and a new limiter with the same settings and the same `TimeProvider` when `Scope == Instance`, so each proxy gets its own budget. Two getters would not do here, because the copy would lose a custom `TimeProvider`.
 - **Values at call time.** Every value is read from the field; nothing is a literal:
   - Retry: the loop bound is `_x.MaxAttempts`, the last-attempt check is `_x.MaxAttempts - 1`, and the delay is `_x.GetBackoffMs(__attempt)`. The generated jitter expression is removed.
   - Per-attempt timeout, emitted only for methods with a `CancellationToken`:
@@ -136,9 +136,9 @@ Constructors throw `ArgumentOutOfRangeException` for:
 | `RetryPolicy` | `maxAttempts >= 1`, `backoffMs >= 0`, `perAttemptTimeoutMs >= 0` |
 | `TimeoutPolicy` | `totalMs > 0` |
 | `CircuitBreakerPolicy` | `maxFailures >= 1`, `resetMs >= 0`, `halfOpenProbes >= 1` |
-| `RateLimiter` | `maxPerSecond >= 0`, `burstSize >= 1` |
+| `RateLimiter` | `maxPerSecond >= 0`, `burstSize >= 0` |
 
-Every value that is 0 in existing tests or packages stays legal. For example, ZeroAlloc.Saga's tests use `RateLimiter(maxPerSecond: 0, ...)`. Invalid configuration fails when the policies are built: at `new JevApiResiliencePolicies()` for attribute values, and inside `configure` for configured ones. Today `MaxAttempts = 0` generates a loop that never calls the inner service, and `CancelAfter(0)` cancels immediately.
+Every value that is 0 in existing tests or packages stays legal. For example, ZeroAlloc.Saga's tests use `RateLimiter(maxPerSecond: 0, ...)`, and the benchmarks use `burstSize: 0` for a limiter that rejects every call. Invalid configuration fails when the policies are built: at `new JevApiResiliencePolicies()` for attribute values, and inside `configure` for configured ones. Today `MaxAttempts = 0` generates a loop that never calls the inner service, and `CancelAfter(0)` cancels immediately.
 
 ## Breaking changes (2.0.0)
 
