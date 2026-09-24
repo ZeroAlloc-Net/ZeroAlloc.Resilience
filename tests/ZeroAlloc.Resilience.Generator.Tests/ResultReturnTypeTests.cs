@@ -9,7 +9,6 @@ public class ResultReturnTypeTests
 {
     // Method A carries every policy, so it reaches the rate-limit, circuit-breaker and
     // retry-exhaustion failure sites. Method B has no retry, so it reaches the single-call catch.
-    // The interface needs an attribute of its own: the generator skips interfaces without one.
     private static string AllFailureSites(string wrapper, string resultType) => $$"""
         using System.Threading;
         using System.Threading.Tasks;
