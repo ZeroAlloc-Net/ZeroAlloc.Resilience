@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.6](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v1.3.5...v1.3.6) (2026-09-24)
+
+
+### Bug Fixes
+
+* return a failure of the method's own Result type ([#148](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/148)) ([25df178](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/25df1785d6911f836366caf824ffa02494fe9dea)), closes [#141](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/141)
+
 ## [1.3.5](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v1.3.4...v1.3.5) (2026-09-24)
 
 
