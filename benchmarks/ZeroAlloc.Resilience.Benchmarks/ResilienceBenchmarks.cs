@@ -139,25 +139,25 @@ public class ResilienceBenchmarks
         var cb = new CircuitBreakerPolicy(5, 1_000, 1);
         var rl = new RateLimiter(1_000_000, 1_000_000, RateLimitScope.Shared);
 
-        _retryProxy     = new IRetryServiceResilienceProxy(_inner, retry);
-        _cbProxy        = new ICircuitServiceResilienceProxy(_inner, cb);
-        _rateLimitProxy = new IRateLimitServiceResilienceProxy(_inner, rl);
+        _retryProxy     = new IRetryServiceResilienceProxy(_inner, new RetryServiceResiliencePolicies { Retry = retry });
+        _cbProxy        = new ICircuitServiceResilienceProxy(_inner, new CircuitServiceResiliencePolicies { CircuitBreaker = cb });
+        _rateLimitProxy = new IRateLimitServiceResilienceProxy(_inner, new RateLimitServiceResiliencePolicies { RateLimiter = rl });
 
         _allPoliciesProxy = new IAllPoliciesServiceResilienceProxy(
-            _inner, retry, new TimeoutPolicy(5_000), rl, cb);
+            _inner, new AllPoliciesServiceResiliencePolicies { Retry = retry, Timeout = new TimeoutPolicy(5_000), RateLimiter = rl, CircuitBreaker = cb });
 
         var cbOpen = new CircuitBreakerPolicy(1, 60_000, 1); // trip on 1 failure, long reset
         var cbOpenImpl = new AlwaysFailsImpl();
-        _cbOpenProxy = new ICircuitServiceResilienceProxy(cbOpenImpl, cbOpen);
+        _cbOpenProxy = new ICircuitServiceResilienceProxy(cbOpenImpl, new CircuitServiceResiliencePolicies { CircuitBreaker = cbOpen });
         // Pre-trip the circuit
         try { _cbOpenProxy.GetAsync("x", CancellationToken.None).GetAwaiter().GetResult(); } catch { }
 
         // BurstSize = 0 means immediately exhausted
         var rlExhausted = new RateLimiter(1, 0, RateLimitScope.Shared);
-        _rateLimitExhaustedProxy = new IRateLimitServiceResilienceProxy(_inner, rlExhausted);
+        _rateLimitExhaustedProxy = new IRateLimitServiceResilienceProxy(_inner, new RateLimitServiceResiliencePolicies { RateLimiter = rlExhausted });
 
         var failTwice = new RetryWith2FailuresImpl();
-        _retryWith2FailuresProxy = new IRetryServiceResilienceProxy(failTwice, retry);
+        _retryWith2FailuresProxy = new IRetryServiceResilienceProxy(failTwice, new RetryServiceResiliencePolicies { Retry = retry });
     }
 
     [Benchmark(Baseline = true, Description = "Direct call (no proxy)")]

@@ -22,23 +22,33 @@ internal sealed class IMyServiceResilienceProxy : global::T.IMyService
     private readonly global::T.IMyService _inner;
     private readonly global::ZeroAlloc.Resilience.RetryPolicy _retry;
     private readonly global::ZeroAlloc.Resilience.TimeoutPolicy _timeout;
+    private readonly global::ZeroAlloc.Resilience.RetryPolicy _postAsyncRetry;
+    private readonly global::ZeroAlloc.Resilience.TimeoutPolicy _postAsyncTimeout;
 
-    public IMyServiceResilienceProxy(global::T.IMyService inner, global::ZeroAlloc.Resilience.RetryPolicy retry, global::ZeroAlloc.Resilience.TimeoutPolicy timeout)
+    public IMyServiceResilienceProxy(global::T.IMyService inner, MyServiceResiliencePolicies policies)
     {
+        global::System.ArgumentNullException.ThrowIfNull(inner);
+        global::System.ArgumentNullException.ThrowIfNull(policies);
         _inner = inner;
-        _retry = retry;
-        _timeout = timeout;
+        _retry = (policies.Retry ?? throw new global::System.ArgumentException("MyServiceResiliencePolicies.Retry is null.", nameof(policies)));
+        _timeout = (policies.Timeout ?? throw new global::System.ArgumentException("MyServiceResiliencePolicies.Timeout is null.", nameof(policies)));
+        _postAsyncRetry = (policies.PostAsyncRetry ?? throw new global::System.ArgumentException("MyServiceResiliencePolicies.PostAsyncRetry is null.", nameof(policies)));
+        _postAsyncTimeout = (policies.PostAsyncTimeout ?? throw new global::System.ArgumentException("MyServiceResiliencePolicies.PostAsyncTimeout is null.", nameof(policies)));
     }
 
     public async global::System.Threading.Tasks.ValueTask<string> GetAsync(string id, global::System.Threading.CancellationToken ct)
     {
         using var __totalCts = global::System.Threading.CancellationTokenSource.CreateLinkedTokenSource(ct);
-        __totalCts.CancelAfter(5000);
+        __totalCts.CancelAfter(_timeout.TotalMs);
 
         global::System.Exception? __lastEx = null;
-        for (int __attempt = 0; __attempt < 3; __attempt++)
+        for (int __attempt = 0; __attempt < _retry.MaxAttempts; __attempt++)
         {
-            var __ct = __totalCts.Token;
+            using var __attemptCts = _retry.PerAttemptTimeoutMs > 0
+                ? global::System.Threading.CancellationTokenSource.CreateLinkedTokenSource(__totalCts.Token)
+                : null;
+            __attemptCts?.CancelAfter(_retry.PerAttemptTimeoutMs);
+            var __ct = __attemptCts?.Token ?? __totalCts.Token;
             try
             {
                 var __result = await _inner.GetAsync(id, __ct).ConfigureAwait(false);
@@ -48,8 +58,8 @@ internal sealed class IMyServiceResilienceProxy : global::T.IMyService
             {
                 __lastEx = __ex;
                 if (__totalCts.IsCancellationRequested) break;
-                if (__attempt == 2) break;
-                await global::System.Threading.Tasks.Task.Delay(200 * (1 << __attempt), __totalCts.Token).ConfigureAwait(false);
+                if (__attempt == _retry.MaxAttempts - 1) break;
+                await global::System.Threading.Tasks.Task.Delay(_retry.GetBackoffMs(__attempt), __totalCts.Token).ConfigureAwait(false);
             }
         }
         // All attempts exhausted
@@ -59,12 +69,16 @@ internal sealed class IMyServiceResilienceProxy : global::T.IMyService
     public async global::System.Threading.Tasks.ValueTask PostAsync(string data, global::System.Threading.CancellationToken ct)
     {
         using var __totalCts = global::System.Threading.CancellationTokenSource.CreateLinkedTokenSource(ct);
-        __totalCts.CancelAfter(500);
+        __totalCts.CancelAfter(_postAsyncTimeout.TotalMs);
 
         global::System.Exception? __lastEx = null;
-        for (int __attempt = 0; __attempt < 1; __attempt++)
+        for (int __attempt = 0; __attempt < _postAsyncRetry.MaxAttempts; __attempt++)
         {
-            var __ct = __totalCts.Token;
+            using var __attemptCts = _postAsyncRetry.PerAttemptTimeoutMs > 0
+                ? global::System.Threading.CancellationTokenSource.CreateLinkedTokenSource(__totalCts.Token)
+                : null;
+            __attemptCts?.CancelAfter(_postAsyncRetry.PerAttemptTimeoutMs);
+            var __ct = __attemptCts?.Token ?? __totalCts.Token;
             try
             {
                 await _inner.PostAsync(data, __ct).ConfigureAwait(false);
@@ -74,8 +88,8 @@ internal sealed class IMyServiceResilienceProxy : global::T.IMyService
             {
                 __lastEx = __ex;
                 if (__totalCts.IsCancellationRequested) break;
-                if (__attempt == 0) break;
-                await global::System.Threading.Tasks.Task.Delay(200 * (1 << __attempt), __totalCts.Token).ConfigureAwait(false);
+                if (__attempt == _postAsyncRetry.MaxAttempts - 1) break;
+                await global::System.Threading.Tasks.Task.Delay(_postAsyncRetry.GetBackoffMs(__attempt), __totalCts.Token).ConfigureAwait(false);
             }
         }
         // All attempts exhausted
@@ -86,6 +100,19 @@ internal sealed class IMyServiceResilienceProxy : global::T.IMyService
 
 public static partial class ResilienceServiceCollectionExtensions
 {
+    public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddMyServiceResiliencePolicies(
+        this global::Microsoft.Extensions.DependencyInjection.IServiceCollection services,
+        global::System.Action<global::System.IServiceProvider, MyServiceResiliencePolicies>? configure = null)
+    {
+        global::Microsoft.Extensions.DependencyInjection.Extensions.ServiceCollectionDescriptorExtensions.TryAddSingleton<MyServiceResiliencePolicies>(services, sp =>
+        {
+            var policies = new MyServiceResiliencePolicies();
+            configure?.Invoke(sp, policies);
+            return policies;
+        });
+        return services;
+    }
+
     public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddMyServiceResilience<
         [global::System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(
             global::System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicConstructors)]
@@ -94,9 +121,9 @@ public static partial class ResilienceServiceCollectionExtensions
         where TImpl : class, global::T.IMyService
     {
         services.AddTransient<TImpl>();
-        services.AddSingleton(new global::ZeroAlloc.Resilience.RetryPolicy(3, 200, false, 0));
-        services.AddSingleton(new global::ZeroAlloc.Resilience.TimeoutPolicy(5000));
-        services.AddTransient<global::T.IMyService>(sp => new IMyServiceResilienceProxy(sp.GetRequiredService<TImpl>(), sp.GetRequiredService<global::ZeroAlloc.Resilience.RetryPolicy>(), sp.GetRequiredService<global::ZeroAlloc.Resilience.TimeoutPolicy>()));
+        services.AddMyServiceResiliencePolicies();
+        services.AddTransient<global::T.IMyService>(sp => new IMyServiceResilienceProxy(
+            sp.GetRequiredService<TImpl>(), sp.GetRequiredService<MyServiceResiliencePolicies>()));
         return services;
     }
 }

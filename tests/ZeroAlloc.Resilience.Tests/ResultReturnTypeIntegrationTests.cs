@@ -81,7 +81,7 @@ public class ResultReturnTypeIntegrationTests
     public async Task ResultOfT_ExhaustedRetries_ReturnsFailure_WithLastExceptionMessage()
     {
         var inner = new ThrowingResultImpl();
-        var proxy = new IResultRetryServiceResilienceProxy(inner, Retry3());
+        var proxy = new IResultRetryServiceResilienceProxy(inner, new ResultRetryServiceResiliencePolicies { Retry = Retry3() });
 
         var result = await proxy.GetAsync("x", CancellationToken.None);
 
@@ -94,7 +94,7 @@ public class ResultReturnTypeIntegrationTests
     public async Task TaskOfResultOfT_ExhaustedRetries_ReturnsFailure()
     {
         var inner = new ThrowingResultImpl();
-        var proxy = new IResultRetryServiceResilienceProxy(inner, Retry3());
+        var proxy = new IResultRetryServiceResilienceProxy(inner, new ResultRetryServiceResiliencePolicies { Retry = Retry3() });
 
         var result = await proxy.GetTaskAsync("x", CancellationToken.None);
 
@@ -106,7 +106,7 @@ public class ResultReturnTypeIntegrationTests
     public async Task NonGenericResult_ExhaustedRetries_ReturnsFailure()
     {
         var inner = new ThrowingResultImpl();
-        var proxy = new IResultRetryServiceResilienceProxy(inner, Retry3());
+        var proxy = new IResultRetryServiceResilienceProxy(inner, new ResultRetryServiceResiliencePolicies { Retry = Retry3() });
 
         var result = await proxy.DoAsync(CancellationToken.None);
 
@@ -118,7 +118,7 @@ public class ResultReturnTypeIntegrationTests
     public async Task ResultOfTResilienceError_ExhaustedRetries_ReturnsResilienceError()
     {
         var inner = new ThrowingResultImpl();
-        var proxy = new IResultRetryServiceResilienceProxy(inner, Retry3());
+        var proxy = new IResultRetryServiceResilienceProxy(inner, new ResultRetryServiceResiliencePolicies { Retry = Retry3() });
 
         var result = await proxy.GetTypedAsync("x", CancellationToken.None);
 
@@ -133,7 +133,7 @@ public class ResultReturnTypeIntegrationTests
     public async Task TaskOfResultOfTResilienceError_ExhaustedRetries_ReturnsResilienceError()
     {
         var inner = new ThrowingResultImpl();
-        var proxy = new IResultRetryServiceResilienceProxy(inner, Retry3());
+        var proxy = new IResultRetryServiceResilienceProxy(inner, new ResultRetryServiceResiliencePolicies { Retry = Retry3() });
 
         var result = await proxy.GetTypedTaskAsync("x", CancellationToken.None);
 
@@ -145,7 +145,7 @@ public class ResultReturnTypeIntegrationTests
     public async Task ResultOfT_RateLimitRejection_ReturnsFailure()
     {
         var proxy = new IResultRateLimitedServiceResilienceProxy(
-            new SucceedingResultImpl(), new RateLimiter(maxPerSecond: 1, burstSize: 1, scope: RateLimitScope.Instance));
+            new SucceedingResultImpl(), new ResultRateLimitedServiceResiliencePolicies { RateLimiter = new RateLimiter(maxPerSecond: 1, burstSize: 1, scope: RateLimitScope.Instance) });
 
         (await proxy.GetAsync("1", CancellationToken.None)).IsSuccess.Should().BeTrue();
         var rejected = await proxy.GetAsync("2", CancellationToken.None);
@@ -158,7 +158,7 @@ public class ResultReturnTypeIntegrationTests
     public async Task ResultOfTResilienceError_RateLimitRejection_ReturnsResilienceError()
     {
         var proxy = new IResultRateLimitedServiceResilienceProxy(
-            new SucceedingResultImpl(), new RateLimiter(maxPerSecond: 1, burstSize: 1, scope: RateLimitScope.Instance));
+            new SucceedingResultImpl(), new ResultRateLimitedServiceResiliencePolicies { RateLimiter = new RateLimiter(maxPerSecond: 1, burstSize: 1, scope: RateLimitScope.Instance) });
 
         (await proxy.GetTypedAsync("1", CancellationToken.None)).IsSuccess.Should().BeTrue();
         var rejected = await proxy.GetTypedAsync("2", CancellationToken.None);
@@ -173,7 +173,7 @@ public class ResultReturnTypeIntegrationTests
     {
         var inner = new ThrowingResultImpl();
         using var cb = new CircuitBreakerPolicy(maxFailures: 1, resetMs: 60_000, halfOpenProbes: 1);
-        var proxy = new IResultCircuitServiceResilienceProxy(inner, cb);
+        var proxy = new IResultCircuitServiceResilienceProxy(inner, new ResultCircuitServiceResiliencePolicies { CircuitBreaker = cb });
 
         var first = await proxy.GetAsync("x", CancellationToken.None);
         first.IsFailure.Should().BeTrue();
@@ -189,7 +189,7 @@ public class ResultReturnTypeIntegrationTests
     public async Task ForeignError_ReturnedFailure_IsPassedThroughUnchanged()
     {
         var inner = new ForeignErrorImpl { Returns = Result<string, HttpError>.Failure(new HttpError(429)) };
-        var proxy = new IForeignErrorServiceResilienceProxy(inner, Retry3());
+        var proxy = new IForeignErrorServiceResilienceProxy(inner, new ForeignErrorServiceResiliencePolicies { Retry = Retry3() });
 
         var result = await proxy.GetAsync("x", CancellationToken.None);
 
@@ -202,7 +202,7 @@ public class ResultReturnTypeIntegrationTests
     public async Task ForeignError_ThrowsThenReturns_RetriesAndReturnsInnerResult()
     {
         var inner = new ForeignErrorImpl { ThrowTimes = 2, Returns = Result<string, HttpError>.Success("ok") };
-        var proxy = new IForeignErrorServiceResilienceProxy(inner, Retry3());
+        var proxy = new IForeignErrorServiceResilienceProxy(inner, new ForeignErrorServiceResiliencePolicies { Retry = Retry3() });
 
         var result = await proxy.GetAsync("x", CancellationToken.None);
 
@@ -215,7 +215,7 @@ public class ResultReturnTypeIntegrationTests
     public async Task ForeignError_EveryAttemptThrows_ThrowsResilienceException()
     {
         var inner = new ForeignErrorImpl { ThrowTimes = int.MaxValue };
-        var proxy = new IForeignErrorServiceResilienceProxy(inner, Retry3());
+        var proxy = new IForeignErrorServiceResilienceProxy(inner, new ForeignErrorServiceResiliencePolicies { Retry = Retry3() });
 
         var act = async () => await proxy.GetAsync("x", CancellationToken.None);
 

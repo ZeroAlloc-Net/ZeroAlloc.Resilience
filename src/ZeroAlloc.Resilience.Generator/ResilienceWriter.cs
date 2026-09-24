@@ -1,5 +1,6 @@
 namespace ZeroAlloc.Resilience.Generator;
 
+using System.Collections.Immutable;
 using System.Linq;
 using System.Text;
 
@@ -45,41 +46,38 @@ internal static class ResilienceWriter
 
     private static void WriteProxy(StringBuilder sb, ResilienceModel model)
     {
-        var hasRetry   = model.Methods.Any(static m => m.Retry is not null);
-        var hasTimeout = model.Methods.Any(static m => m.Timeout is not null);
-        var hasRate    = model.Methods.Any(static m => m.RateLimit is not null);
-        var hasCb      = model.Methods.Any(static m => m.CircuitBreaker is not null);
+        // Only the slots some method reads become fields; an interface slot that every method
+        // overrides stays on the policies class but is not copied.
+        var used = model.Slots.Where(s => model.Methods.Any(m =>
+            m.RetrySlot == s || m.TimeoutSlot == s || m.RateLimiterSlot == s || m.CircuitBreakerSlot == s)).ToImmutableArray();
 
         sb.AppendLine($"internal sealed class {model.InterfaceName}ResilienceProxy : {model.InterfaceFqn}");
         sb.AppendLine("{");
         sb.AppendLine($"    private readonly {model.InterfaceFqn} _inner;");
-        if (hasRetry)   sb.AppendLine("    private readonly global::ZeroAlloc.Resilience.RetryPolicy _retry;");
-        if (hasTimeout) sb.AppendLine("    private readonly global::ZeroAlloc.Resilience.TimeoutPolicy _timeout;");
-        if (hasRate)    sb.AppendLine("    private readonly global::ZeroAlloc.Resilience.RateLimiter _rateLimiter;");
-        if (hasCb)      sb.AppendLine("    private readonly global::ZeroAlloc.Resilience.CircuitBreakerPolicy _circuitBreaker;");
+        foreach (var slot in used)
+            sb.AppendLine($"    private readonly {slot.TypeFqn} {slot.FieldName};");
         sb.AppendLine();
 
-        // Constructor
-        sb.Append($"    public {model.InterfaceName}ResilienceProxy({model.InterfaceFqn} inner");
-        if (hasRetry)   sb.Append(", global::ZeroAlloc.Resilience.RetryPolicy retry");
-        if (hasTimeout) sb.Append(", global::ZeroAlloc.Resilience.TimeoutPolicy timeout");
-        if (hasRate)    sb.Append(", global::ZeroAlloc.Resilience.RateLimiter rateLimiter");
-        if (hasCb)      sb.Append(", global::ZeroAlloc.Resilience.CircuitBreakerPolicy circuitBreaker");
-        sb.AppendLine(")");
+        // The constructor copies each slot, so changing the policies afterwards only affects
+        // proxies created later.
+        sb.AppendLine($"    public {model.InterfaceName}ResilienceProxy({model.InterfaceFqn} inner, {model.PoliciesClassName} policies)");
         sb.AppendLine("    {");
+        sb.AppendLine("        global::System.ArgumentNullException.ThrowIfNull(inner);");
+        sb.AppendLine("        global::System.ArgumentNullException.ThrowIfNull(policies);");
         sb.AppendLine("        _inner = inner;");
-        if (hasRetry)   sb.AppendLine("        _retry = retry;");
-        if (hasTimeout) sb.AppendLine("        _timeout = timeout;");
-        if (hasRate)    sb.AppendLine("        _rateLimiter = rateLimiter;");
-        if (hasCb)      sb.AppendLine("        _circuitBreaker = circuitBreaker;");
+        foreach (var slot in used)
+        {
+            var read = $"(policies.{slot.PropertyName} ?? throw new global::System.ArgumentException(\"{model.PoliciesClassName}.{slot.PropertyName} is null.\", nameof(policies)))";
+            sb.AppendLine(slot.Kind == PolicyKind.RateLimiter
+                ? $"        {slot.FieldName} = {read}.ForProxyInstance();"
+                : $"        {slot.FieldName} = {read};");
+        }
         sb.AppendLine("    }");
         sb.AppendLine();
 
-        // Policy-wrapped methods
         foreach (var method in model.Methods)
             WriteMethod(sb, method);
 
-        // Passthrough methods (no policy — direct delegation)
         foreach (var method in model.PassthroughMethods)
             WritePassthrough(sb, method);
 
@@ -95,7 +93,7 @@ internal static class ResilienceWriter
         // 1. Rate limit
         if (method.RateLimit is not null)
         {
-            sb.AppendLine("        if (!_rateLimiter.TryAcquire())");
+            sb.AppendLine($"        if (!{method.RateLimiterSlot!.FieldName}.TryAcquire())");
             if (method.ReturnsFailureResult)
                 sb.AppendLine($"            return {FailureExpression(method, "\"RateLimit\"", "\"Rate limit exceeded.\"", exceptionExpr: null)};");
             else
@@ -106,7 +104,7 @@ internal static class ResilienceWriter
         // 2. Circuit breaker check
         if (method.CircuitBreaker is not null)
         {
-            sb.AppendLine("        if (!_circuitBreaker.CanExecute())");
+            sb.AppendLine($"        if (!{method.CircuitBreakerSlot!.FieldName}.CanExecute())");
             sb.AppendLine("        {");
             if (method.FallbackMethodName is not null)
             {
@@ -137,7 +135,7 @@ internal static class ResilienceWriter
                 sb.AppendLine($"        using var __totalCts = global::System.Threading.CancellationTokenSource.CreateLinkedTokenSource({method.CancellationTokenParamName});");
             else
                 sb.AppendLine("        using var __totalCts = new global::System.Threading.CancellationTokenSource();");
-            sb.AppendLine($"        __totalCts.CancelAfter({method.Timeout!.TotalMs});");
+            sb.AppendLine($"        __totalCts.CancelAfter({method.TimeoutSlot!.FieldName}.TotalMs);");
             sb.AppendLine();
         }
 
@@ -157,29 +155,29 @@ internal static class ResilienceWriter
 
     private static void WriteRetryLoop(StringBuilder sb, MethodModel method, bool hasTotalTimeout)
     {
-        var retry = method.Retry!;
+        var retry = method.RetrySlot!.FieldName;
         var awaitKw = method.IsAsync ? "await " : "";
         var configKw = method.IsAsync ? ".ConfigureAwait(false)" : "";
 
         sb.AppendLine("        global::System.Exception? __lastEx = null;");
-        sb.AppendLine($"        for (int __attempt = 0; __attempt < {retry.MaxAttempts}; __attempt++)");
+        sb.AppendLine($"        for (int __attempt = 0; __attempt < {retry}.MaxAttempts; __attempt++)");
         sb.AppendLine("        {");
 
-        // Per-attempt timeout CTS
-        if (retry.PerAttemptTimeoutMs > 0 && method.HasCancellationToken)
+        // The per-attempt timeout is a runtime value, so the CTS is created only when it is set.
+        // Without a CancellationToken parameter there is nothing to propagate it to; ZR0002 warns
+        // when the attribute asks for one.
+        if (method.HasCancellationToken)
         {
-            var innerToken = hasTotalTimeout ? "__totalCts.Token" : method.CancellationTokenParamName ?? "default";
-            sb.AppendLine($"            using var __attemptCts = global::System.Threading.CancellationTokenSource.CreateLinkedTokenSource({innerToken});");
-            sb.AppendLine($"            __attemptCts.CancelAfter({retry.PerAttemptTimeoutMs});");
-            sb.AppendLine("            var __ct = __attemptCts.Token;");
+            var outerToken = hasTotalTimeout ? "__totalCts.Token" : method.CancellationTokenParamName!;
+            sb.AppendLine($"            using var __attemptCts = {retry}.PerAttemptTimeoutMs > 0");
+            sb.AppendLine($"                ? global::System.Threading.CancellationTokenSource.CreateLinkedTokenSource({outerToken})");
+            sb.AppendLine("                : null;");
+            sb.AppendLine($"            __attemptCts?.CancelAfter({retry}.PerAttemptTimeoutMs);");
+            sb.AppendLine($"            var __ct = __attemptCts?.Token ?? {outerToken};");
         }
         else if (hasTotalTimeout)
         {
             sb.AppendLine("            var __ct = __totalCts.Token;");
-        }
-        else if (method.HasCancellationToken)
-        {
-            sb.AppendLine($"            var __ct = {method.CancellationTokenParamName ?? "default"};");
         }
 
         sb.AppendLine("            try");
@@ -187,31 +185,25 @@ internal static class ResilienceWriter
         var callArgs = method.HasCancellationToken ? method.ArgumentListWithToken : method.ArgumentList;
         sb.AppendLine($"                {CaptureCall(method, $"{awaitKw}_inner.{method.Name}({callArgs}){configKw}")}");
         if (method.CircuitBreaker is not null)
-            sb.AppendLine("                _circuitBreaker.OnSuccess();");
+            sb.AppendLine($"                {method.CircuitBreakerSlot!.FieldName}.OnSuccess();");
         sb.AppendLine($"                {ReturnCaptured(method)}");
         sb.AppendLine("            }");
         sb.AppendLine("            catch (global::System.Exception __ex)");
         sb.AppendLine("            {");
         sb.AppendLine("                __lastEx = __ex;");
         if (method.CircuitBreaker is not null)
-            sb.AppendLine("                _circuitBreaker.OnFailure(__ex);");
+            sb.AppendLine($"                {method.CircuitBreakerSlot!.FieldName}.OnFailure(__ex);");
         if (hasTotalTimeout)
             sb.AppendLine("                if (__totalCts.IsCancellationRequested) break;");
-        sb.AppendLine($"                if (__attempt == {retry.MaxAttempts - 1}) break;");
+        sb.AppendLine($"                if (__attempt == {retry}.MaxAttempts - 1) break;");
         if (method.IsAsync)
         {
             var delayToken = hasTotalTimeout ? ", __totalCts.Token" : "";
-            var backoffExpr = retry.Jitter
-                ? $"{retry.BackoffMs} * (1 << __attempt) + global::System.Random.Shared.Next(0, global::System.Math.Max(1, {retry.BackoffMs} * (1 << __attempt) / 2))"
-                : $"{retry.BackoffMs} * (1 << __attempt)";
-            sb.AppendLine($"                await global::System.Threading.Tasks.Task.Delay({backoffExpr}{delayToken}).ConfigureAwait(false);");
+            sb.AppendLine($"                await global::System.Threading.Tasks.Task.Delay({retry}.GetBackoffMs(__attempt){delayToken}).ConfigureAwait(false);");
         }
         else
         {
-            var backoffExpr = retry.Jitter
-                ? $"{retry.BackoffMs} * (1 << __attempt) + global::System.Random.Shared.Next(0, global::System.Math.Max(1, {retry.BackoffMs} * (1 << __attempt) / 2))"
-                : $"{retry.BackoffMs} * (1 << __attempt)";
-            sb.AppendLine($"                global::System.Threading.Thread.Sleep({backoffExpr});");
+            sb.AppendLine($"                global::System.Threading.Thread.Sleep({retry}.GetBackoffMs(__attempt));");
         }
         sb.AppendLine("            }");
         sb.AppendLine("        }");
@@ -260,14 +252,14 @@ internal static class ResilienceWriter
             sb.AppendLine("        {");
             sb.AppendLine($"            {CaptureCall(method, $"{awaitKw}_inner.{method.Name}({callArgs}){configKw}")}");
             if (method.CircuitBreaker is not null)
-                sb.AppendLine("            _circuitBreaker.OnSuccess();");
+                sb.AppendLine($"            {method.CircuitBreakerSlot!.FieldName}.OnSuccess();");
             sb.AppendLine($"            {ReturnCaptured(method)}");
             sb.AppendLine("        }");
             sb.AppendLine("        catch (global::System.Exception __ex)");
             sb.AppendLine("        {");
             sb.AppendLine("            __lastEx = __ex;");
             if (method.CircuitBreaker is not null)
-                sb.AppendLine("            _circuitBreaker.OnFailure(__ex);");
+                sb.AppendLine($"            {method.CircuitBreakerSlot!.FieldName}.OnFailure(__ex);");
             sb.AppendLine("        }");
             sb.AppendLine($"        return {FailureExpression(method, SingleCallPolicyExpression(method, hasTotalTimeout), "__lastEx.Message", "__lastEx")};");
         }
@@ -276,12 +268,12 @@ internal static class ResilienceWriter
             sb.AppendLine("        try");
             sb.AppendLine("        {");
             sb.AppendLine($"            {CaptureCall(method, $"{awaitKw}_inner.{method.Name}({callArgs}){configKw}")}");
-            sb.AppendLine("            _circuitBreaker.OnSuccess();");
+            sb.AppendLine($"            {method.CircuitBreakerSlot!.FieldName}.OnSuccess();");
             sb.AppendLine($"            {ReturnCaptured(method)}");
             sb.AppendLine("        }");
             sb.AppendLine("        catch (global::System.Exception __ex)");
             sb.AppendLine("        {");
-            sb.AppendLine("            _circuitBreaker.OnFailure(__ex);");
+            sb.AppendLine($"            {method.CircuitBreakerSlot!.FieldName}.OnFailure(__ex);");
             sb.AppendLine("            throw;");
             sb.AppendLine("        }");
         }
@@ -336,15 +328,8 @@ internal static class ResilienceWriter
 
     private static void WriteDiExtension(StringBuilder sb, ResilienceModel model)
     {
-        var hasRetry   = model.Methods.Any(static m => m.Retry is not null);
-        var hasTimeout = model.Methods.Any(static m => m.Timeout is not null);
-        var hasRate    = model.Methods.Any(static m => m.RateLimit is not null);
-        var hasCb      = model.Methods.Any(static m => m.CircuitBreaker is not null);
-
-        var retry   = model.ClassRetry   ?? model.Methods.FirstOrDefault(static m => m.Retry is not null)?.Retry;
-        var timeout = model.ClassTimeout ?? model.Methods.FirstOrDefault(static m => m.Timeout is not null)?.Timeout;
-        var rate    = model.ClassRateLimit ?? model.Methods.FirstOrDefault(static m => m.RateLimit is not null)?.RateLimit;
-        var cb      = model.ClassCircuitBreaker ?? model.Methods.FirstOrDefault(static m => m.CircuitBreaker is not null)?.CircuitBreaker;
+        var name = model.InterfaceName.TrimStart('I');
+        var policies = model.PoliciesClassName;
 
         // Partial declarations must agree on accessibility, so non-public interfaces get their
         // own internal class instead of sharing the public ResilienceServiceCollectionExtensions.
@@ -352,36 +337,58 @@ internal static class ResilienceWriter
             ? "public static partial class ResilienceServiceCollectionExtensions"
             : "internal static partial class InternalResilienceServiceCollectionExtensions");
         sb.AppendLine("{");
-        sb.AppendLine($"    public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection Add{model.InterfaceName.TrimStart('I')}Resilience<");
+
+        // The policies alone, for hosts that build the proxy themselves. TryAdd: an instance the
+        // application registered first wins, and configure then does not run.
+        sb.AppendLine($"    public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection Add{name}ResiliencePolicies(");
+        sb.AppendLine("        this global::Microsoft.Extensions.DependencyInjection.IServiceCollection services,");
+        sb.AppendLine($"        global::System.Action<global::System.IServiceProvider, {policies}>? configure = null)");
+        sb.AppendLine("    {");
+        sb.AppendLine($"        global::Microsoft.Extensions.DependencyInjection.Extensions.ServiceCollectionDescriptorExtensions.TryAddSingleton<{policies}>(services, sp =>");
+        sb.AppendLine("        {");
+        sb.AppendLine($"            var policies = new {policies}();");
+        sb.AppendLine("            configure?.Invoke(sp, policies);");
+        sb.AppendLine("            return policies;");
+        sb.AppendLine("        });");
+        sb.AppendLine("        return services;");
+        sb.AppendLine("    }");
+        sb.AppendLine();
+
+        WriteAddResilience(sb, model, withConfigure: false);
+
+        sb.AppendLine("}");
+    }
+
+    private static void WriteAddResilience(StringBuilder sb, ResilienceModel model, bool withConfigure)
+    {
+        var name = model.InterfaceName.TrimStart('I');
+        var policies = model.PoliciesClassName;
+
+        sb.AppendLine($"    public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection Add{name}Resilience<");
         // IL2091: TImpl flows into AddTransient<T> which requires PublicConstructors.
         sb.AppendLine("        [global::System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(");
         sb.AppendLine("            global::System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicConstructors)]");
         sb.AppendLine("        TImpl>(");
-        sb.AppendLine($"        this global::Microsoft.Extensions.DependencyInjection.IServiceCollection services)");
+        if (withConfigure)
+        {
+            sb.AppendLine("        this global::Microsoft.Extensions.DependencyInjection.IServiceCollection services,");
+            sb.AppendLine($"        global::System.Action<global::System.IServiceProvider, {policies}> configure)");
+        }
+        else
+        {
+            sb.AppendLine("        this global::Microsoft.Extensions.DependencyInjection.IServiceCollection services)");
+        }
         sb.AppendLine($"        where TImpl : class, {model.InterfaceFqn}");
         sb.AppendLine("    {");
+        if (withConfigure)
+            sb.AppendLine("        global::System.ArgumentNullException.ThrowIfNull(configure);");
         sb.AppendLine("        services.AddTransient<TImpl>();");
-
-        if (hasRetry && retry is not null)
-            sb.AppendLine($"        services.AddSingleton(new global::ZeroAlloc.Resilience.RetryPolicy({retry.MaxAttempts}, {retry.BackoffMs}, {(retry.Jitter ? "true" : "false")}, {retry.PerAttemptTimeoutMs}));");
-        if (hasTimeout && timeout is not null)
-            sb.AppendLine($"        services.AddSingleton(new global::ZeroAlloc.Resilience.TimeoutPolicy({timeout.TotalMs}));");
-        if (hasRate && rate is not null)
-            sb.AppendLine($"        services.AddSingleton(new global::ZeroAlloc.Resilience.RateLimiter({rate.MaxPerSecond}, {rate.BurstSize}, global::ZeroAlloc.Resilience.RateLimitScope.{rate.Scope}));");
-        if (hasCb && cb is not null)
-            sb.AppendLine($"        services.AddSingleton(new global::ZeroAlloc.Resilience.CircuitBreakerPolicy({cb.MaxFailures}, {cb.ResetMs}, {cb.HalfOpenProbes}));");
-
-        sb.Append($"        services.AddTransient<{model.InterfaceFqn}>(sp => new {model.InterfaceName}ResilienceProxy(");
-        sb.Append("sp.GetRequiredService<TImpl>()");
-        if (hasRetry)   sb.Append(", sp.GetRequiredService<global::ZeroAlloc.Resilience.RetryPolicy>()");
-        if (hasTimeout) sb.Append(", sp.GetRequiredService<global::ZeroAlloc.Resilience.TimeoutPolicy>()");
-        if (hasRate)    sb.Append(", sp.GetRequiredService<global::ZeroAlloc.Resilience.RateLimiter>()");
-        if (hasCb)      sb.Append(", sp.GetRequiredService<global::ZeroAlloc.Resilience.CircuitBreakerPolicy>()");
-        sb.AppendLine("));");
-
+        sb.AppendLine(withConfigure
+            ? $"        services.Add{name}ResiliencePolicies(configure);"
+            : $"        services.Add{name}ResiliencePolicies();");
+        sb.AppendLine($"        services.AddTransient<{model.InterfaceFqn}>(sp => new {model.InterfaceName}ResilienceProxy(");
+        sb.AppendLine($"            sp.GetRequiredService<TImpl>(), sp.GetRequiredService<{policies}>()));");
         sb.AppendLine("        return services;");
         sb.AppendLine("    }");
-        sb.AppendLine("}");
     }
-
 }

@@ -67,13 +67,13 @@ public class PollyComparisonBenchmark
         var cb = new CircuitBreakerPolicy(5, 1_000, 1);
         var rl = new RateLimiter(1_000_000, 1_000_000, RateLimitScope.Shared);
 
-        _zaRetry = new IRetryServiceResilienceProxy(_inner, retry);
-        _zaCb = new ICircuitServiceResilienceProxy(_inner, cb);
+        _zaRetry = new IRetryServiceResilienceProxy(_inner, new RetryServiceResiliencePolicies { Retry = retry });
+        _zaCb = new ICircuitServiceResilienceProxy(_inner, new CircuitServiceResiliencePolicies { CircuitBreaker = cb });
         // RetryWith2FailuresImpl carries an Interlocked counter — the two pipelines
         // MUST get separate instances; do not "dedupe" this allocation.
-        _zaRetryFailTwice = new IRetryServiceResilienceProxy(new RetryWith2FailuresImpl(), retry);
+        _zaRetryFailTwice = new IRetryServiceResilienceProxy(new RetryWith2FailuresImpl(), new RetryServiceResiliencePolicies { Retry = retry });
         _zaAllPolicies = new IAllPoliciesServiceResilienceProxy(
-            _inner, retry, new TimeoutPolicy(5_000), rl, cb);
+            _inner, new AllPoliciesServiceResiliencePolicies { Retry = retry, Timeout = new TimeoutPolicy(5_000), RateLimiter = rl, CircuitBreaker = cb });
 
         // Polly v8: ResiliencePipelineBuilder
         _pollyRetry = new ResiliencePipelineBuilder()
@@ -119,7 +119,7 @@ public class PollyComparisonBenchmark
         // Zero-backoff retry pair — isolates loop overhead from Task.Delay timer cost.
         var zeroBackoffPolicy = new RetryPolicy(3, 0, false, 0);
         _zaRetryZeroBackoff = new IRetryZeroBackoffServiceResilienceProxy(
-            new RetryZeroBackoffWith2FailuresImpl(), zeroBackoffPolicy, new TimeoutPolicy(5_000));
+            new RetryZeroBackoffWith2FailuresImpl(), new RetryZeroBackoffServiceResiliencePolicies { Retry = zeroBackoffPolicy, Timeout = new TimeoutPolicy(5_000) });
 
         _pollyZeroBackoffImpl = new RetryZeroBackoffWith2FailuresImpl();
         _pollyRetryZeroBackoff = new ResiliencePipelineBuilder()
@@ -142,14 +142,14 @@ public class PollyComparisonBenchmark
 
         // Happy path
         _zaAllHappy = new IAllPoliciesHappyServiceResilienceProxy(
-            _inner, standardRetryPolicy, standardTimeoutPolicy, maxRlPolicy, maxCbPolicy);
+            _inner, new AllPoliciesHappyServiceResiliencePolicies { Retry = standardRetryPolicy, Timeout = standardTimeoutPolicy, RateLimiter = maxRlPolicy, CircuitBreaker = maxCbPolicy });
         _pollyAllHappy = BuildPolly4PolicyPipeline(
             int.MaxValue, TimeSpan.FromSeconds(60), int.MaxValue);
 
         // Retry triggers (inner fails 2/3)
         _zaAllRetryImpl = new RetryWith2FailuresImpl();
         _zaAllRetry = new IAllPoliciesRetryServiceResilienceProxy(
-            _zaAllRetryImpl, standardRetryPolicy, standardTimeoutPolicy, maxRlPolicy, maxCbPolicy);
+            _zaAllRetryImpl, new AllPoliciesRetryServiceResiliencePolicies { Retry = standardRetryPolicy, Timeout = standardTimeoutPolicy, RateLimiter = maxRlPolicy, CircuitBreaker = maxCbPolicy });
         _pollyAllRetryImpl = new RetryWith2FailuresImpl();
         _pollyAllRetry = BuildPolly4PolicyPipeline(
             int.MaxValue, TimeSpan.FromSeconds(60), int.MaxValue);
@@ -158,7 +158,7 @@ public class PollyComparisonBenchmark
         var lowCbPolicy = new CircuitBreakerPolicy(5, 60_000, 1);
         var cbOpenZaImpl = new AlwaysFailsImpl();
         _zaAllCbOpen = new IAllPoliciesCbOpenServiceResilienceProxy(
-            cbOpenZaImpl, standardRetryPolicy, standardTimeoutPolicy, maxRlPolicy, lowCbPolicy);
+            cbOpenZaImpl, new AllPoliciesCbOpenServiceResiliencePolicies { Retry = standardRetryPolicy, Timeout = standardTimeoutPolicy, RateLimiter = maxRlPolicy, CircuitBreaker = lowCbPolicy });
         _pollyAllCbOpen = BuildPolly4PolicyPipeline(5, TimeSpan.FromSeconds(60), int.MaxValue);
 
         // Pre-trip both CBs by calling them past MaxFailures with a failing impl.

@@ -25,13 +25,15 @@ internal sealed class IExternalServiceResilienceProxy : global::T.IExternalServi
     private readonly global::ZeroAlloc.Resilience.RateLimiter _rateLimiter;
     private readonly global::ZeroAlloc.Resilience.CircuitBreakerPolicy _circuitBreaker;
 
-    public IExternalServiceResilienceProxy(global::T.IExternalService inner, global::ZeroAlloc.Resilience.RetryPolicy retry, global::ZeroAlloc.Resilience.TimeoutPolicy timeout, global::ZeroAlloc.Resilience.RateLimiter rateLimiter, global::ZeroAlloc.Resilience.CircuitBreakerPolicy circuitBreaker)
+    public IExternalServiceResilienceProxy(global::T.IExternalService inner, ExternalServiceResiliencePolicies policies)
     {
+        global::System.ArgumentNullException.ThrowIfNull(inner);
+        global::System.ArgumentNullException.ThrowIfNull(policies);
         _inner = inner;
-        _retry = retry;
-        _timeout = timeout;
-        _rateLimiter = rateLimiter;
-        _circuitBreaker = circuitBreaker;
+        _retry = (policies.Retry ?? throw new global::System.ArgumentException("ExternalServiceResiliencePolicies.Retry is null.", nameof(policies)));
+        _timeout = (policies.Timeout ?? throw new global::System.ArgumentException("ExternalServiceResiliencePolicies.Timeout is null.", nameof(policies)));
+        _rateLimiter = (policies.RateLimiter ?? throw new global::System.ArgumentException("ExternalServiceResiliencePolicies.RateLimiter is null.", nameof(policies))).ForProxyInstance();
+        _circuitBreaker = (policies.CircuitBreaker ?? throw new global::System.ArgumentException("ExternalServiceResiliencePolicies.CircuitBreaker is null.", nameof(policies)));
     }
 
     public async global::System.Threading.Tasks.ValueTask<string> FetchAsync(string id, global::System.Threading.CancellationToken ct)
@@ -45,14 +47,16 @@ internal sealed class IExternalServiceResilienceProxy : global::T.IExternalServi
         }
 
         using var __totalCts = global::System.Threading.CancellationTokenSource.CreateLinkedTokenSource(ct);
-        __totalCts.CancelAfter(5000);
+        __totalCts.CancelAfter(_timeout.TotalMs);
 
         global::System.Exception? __lastEx = null;
-        for (int __attempt = 0; __attempt < 3; __attempt++)
+        for (int __attempt = 0; __attempt < _retry.MaxAttempts; __attempt++)
         {
-            using var __attemptCts = global::System.Threading.CancellationTokenSource.CreateLinkedTokenSource(__totalCts.Token);
-            __attemptCts.CancelAfter(1000);
-            var __ct = __attemptCts.Token;
+            using var __attemptCts = _retry.PerAttemptTimeoutMs > 0
+                ? global::System.Threading.CancellationTokenSource.CreateLinkedTokenSource(__totalCts.Token)
+                : null;
+            __attemptCts?.CancelAfter(_retry.PerAttemptTimeoutMs);
+            var __ct = __attemptCts?.Token ?? __totalCts.Token;
             try
             {
                 var __result = await _inner.FetchAsync(id, __ct).ConfigureAwait(false);
@@ -64,8 +68,8 @@ internal sealed class IExternalServiceResilienceProxy : global::T.IExternalServi
                 __lastEx = __ex;
                 _circuitBreaker.OnFailure(__ex);
                 if (__totalCts.IsCancellationRequested) break;
-                if (__attempt == 2) break;
-                await global::System.Threading.Tasks.Task.Delay(200 * (1 << __attempt) + global::System.Random.Shared.Next(0, global::System.Math.Max(1, 200 * (1 << __attempt) / 2)), __totalCts.Token).ConfigureAwait(false);
+                if (__attempt == _retry.MaxAttempts - 1) break;
+                await global::System.Threading.Tasks.Task.Delay(_retry.GetBackoffMs(__attempt), __totalCts.Token).ConfigureAwait(false);
             }
         }
         // All attempts exhausted
@@ -83,14 +87,16 @@ internal sealed class IExternalServiceResilienceProxy : global::T.IExternalServi
         }
 
         using var __totalCts = global::System.Threading.CancellationTokenSource.CreateLinkedTokenSource(ct);
-        __totalCts.CancelAfter(5000);
+        __totalCts.CancelAfter(_timeout.TotalMs);
 
         global::System.Exception? __lastEx = null;
-        for (int __attempt = 0; __attempt < 3; __attempt++)
+        for (int __attempt = 0; __attempt < _retry.MaxAttempts; __attempt++)
         {
-            using var __attemptCts = global::System.Threading.CancellationTokenSource.CreateLinkedTokenSource(__totalCts.Token);
-            __attemptCts.CancelAfter(1000);
-            var __ct = __attemptCts.Token;
+            using var __attemptCts = _retry.PerAttemptTimeoutMs > 0
+                ? global::System.Threading.CancellationTokenSource.CreateLinkedTokenSource(__totalCts.Token)
+                : null;
+            __attemptCts?.CancelAfter(_retry.PerAttemptTimeoutMs);
+            var __ct = __attemptCts?.Token ?? __totalCts.Token;
             try
             {
                 var __result = await _inner.FetchFallback(id, __ct).ConfigureAwait(false);
@@ -102,8 +108,8 @@ internal sealed class IExternalServiceResilienceProxy : global::T.IExternalServi
                 __lastEx = __ex;
                 _circuitBreaker.OnFailure(__ex);
                 if (__totalCts.IsCancellationRequested) break;
-                if (__attempt == 2) break;
-                await global::System.Threading.Tasks.Task.Delay(200 * (1 << __attempt) + global::System.Random.Shared.Next(0, global::System.Math.Max(1, 200 * (1 << __attempt) / 2)), __totalCts.Token).ConfigureAwait(false);
+                if (__attempt == _retry.MaxAttempts - 1) break;
+                await global::System.Threading.Tasks.Task.Delay(_retry.GetBackoffMs(__attempt), __totalCts.Token).ConfigureAwait(false);
             }
         }
         // All attempts exhausted
@@ -114,6 +120,19 @@ internal sealed class IExternalServiceResilienceProxy : global::T.IExternalServi
 
 public static partial class ResilienceServiceCollectionExtensions
 {
+    public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddExternalServiceResiliencePolicies(
+        this global::Microsoft.Extensions.DependencyInjection.IServiceCollection services,
+        global::System.Action<global::System.IServiceProvider, ExternalServiceResiliencePolicies>? configure = null)
+    {
+        global::Microsoft.Extensions.DependencyInjection.Extensions.ServiceCollectionDescriptorExtensions.TryAddSingleton<ExternalServiceResiliencePolicies>(services, sp =>
+        {
+            var policies = new ExternalServiceResiliencePolicies();
+            configure?.Invoke(sp, policies);
+            return policies;
+        });
+        return services;
+    }
+
     public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddExternalServiceResilience<
         [global::System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(
             global::System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicConstructors)]
@@ -122,11 +141,9 @@ public static partial class ResilienceServiceCollectionExtensions
         where TImpl : class, global::T.IExternalService
     {
         services.AddTransient<TImpl>();
-        services.AddSingleton(new global::ZeroAlloc.Resilience.RetryPolicy(3, 200, true, 1000));
-        services.AddSingleton(new global::ZeroAlloc.Resilience.TimeoutPolicy(5000));
-        services.AddSingleton(new global::ZeroAlloc.Resilience.RateLimiter(100, 10, global::ZeroAlloc.Resilience.RateLimitScope.Shared));
-        services.AddSingleton(new global::ZeroAlloc.Resilience.CircuitBreakerPolicy(5, 1000, 1));
-        services.AddTransient<global::T.IExternalService>(sp => new IExternalServiceResilienceProxy(sp.GetRequiredService<TImpl>(), sp.GetRequiredService<global::ZeroAlloc.Resilience.RetryPolicy>(), sp.GetRequiredService<global::ZeroAlloc.Resilience.TimeoutPolicy>(), sp.GetRequiredService<global::ZeroAlloc.Resilience.RateLimiter>(), sp.GetRequiredService<global::ZeroAlloc.Resilience.CircuitBreakerPolicy>()));
+        services.AddExternalServiceResiliencePolicies();
+        services.AddTransient<global::T.IExternalService>(sp => new IExternalServiceResilienceProxy(
+            sp.GetRequiredService<TImpl>(), sp.GetRequiredService<ExternalServiceResiliencePolicies>()));
         return services;
     }
 }
