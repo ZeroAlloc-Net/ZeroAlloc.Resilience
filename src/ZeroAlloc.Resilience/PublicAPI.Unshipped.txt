@@ -45,6 +45,7 @@ ZeroAlloc.Resilience.RateLimiter.RateLimiter(int maxPerSecond, int burstSize, Ze
 ZeroAlloc.Resilience.RateLimiter.RateLimiter(int maxPerSecond, int burstSize, ZeroAlloc.Resilience.RateLimitScope scope, System.TimeProvider! timeProvider) -> void
 ZeroAlloc.Resilience.RateLimiter.Scope.get -> ZeroAlloc.Resilience.RateLimitScope
 ZeroAlloc.Resilience.RateLimiter.TryAcquire() -> bool
+ZeroAlloc.Resilience.RateLimiter.ForProxyInstance() -> ZeroAlloc.Resilience.RateLimiter!
 ZeroAlloc.Resilience.ResilienceError
 ZeroAlloc.Resilience.ResilienceError.Deconstruct(out string! PolicyType, out string! Reason, out System.Exception? InnerException) -> void
 ZeroAlloc.Resilience.ResilienceError.Equals(ZeroAlloc.Resilience.ResilienceError other) -> bool

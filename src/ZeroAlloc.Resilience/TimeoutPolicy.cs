@@ -1,3 +1,5 @@
+using System;
+
 namespace ZeroAlloc.Resilience;
 
 /// <summary>
@@ -10,5 +12,9 @@ public sealed class TimeoutPolicy
     public int TotalMs { get; }
 
     /// <param name="totalMs">Total operation timeout in milliseconds.</param>
-    public TimeoutPolicy(int totalMs) => TotalMs = totalMs;
+    public TimeoutPolicy(int totalMs)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(totalMs);
+        TotalMs = totalMs;
+    }
 }

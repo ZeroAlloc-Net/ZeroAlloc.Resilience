@@ -39,6 +39,8 @@ public sealed class RateLimiter
     /// </remarks>
     public RateLimiter(int maxPerSecond, int burstSize, RateLimitScope scope, TimeProvider timeProvider)
     {
+        ArgumentOutOfRangeException.ThrowIfNegative(maxPerSecond);
+        ArgumentOutOfRangeException.ThrowIfNegative(burstSize);
         _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
         _maxPerSecond = maxPerSecond;
         _burstSize = burstSize;
@@ -59,6 +61,16 @@ public sealed class RateLimiter
                 return true;
         }
     }
+
+    /// <summary>
+    /// The limiter a generated proxy uses: this limiter when <see cref="Scope"/> is
+    /// <see cref="RateLimitScope.Shared"/>, or a new limiter with the same settings and time
+    /// provider when it is <see cref="RateLimitScope.Instance"/>, so each proxy has its own budget.
+    /// </summary>
+    public RateLimiter ForProxyInstance() =>
+        Scope == RateLimitScope.Instance
+            ? new RateLimiter(_maxPerSecond, (int)_burstSize, Scope, _timeProvider)
+            : this;
 
     private void Refill()
     {

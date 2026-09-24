@@ -22,6 +22,9 @@ public sealed class CircuitBreakerPolicy : IDisposable
     /// <param name="halfOpenProbes">Successes required to close from HalfOpen.</param>
     public CircuitBreakerPolicy(int maxFailures, int resetMs, int halfOpenProbes)
     {
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxFailures, 1);
+        ArgumentOutOfRangeException.ThrowIfNegative(resetMs);
+        ArgumentOutOfRangeException.ThrowIfLessThan(halfOpenProbes, 1);
         _maxFailures = maxFailures;
         _resetMs = resetMs;
         _halfOpenProbes = halfOpenProbes;

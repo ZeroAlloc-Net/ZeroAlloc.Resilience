@@ -26,6 +26,9 @@ public sealed class RetryPolicy
     /// <param name="perAttemptTimeoutMs">Per-attempt cancellation timeout. 0 = disabled.</param>
     public RetryPolicy(int maxAttempts, int backoffMs, bool jitter, int perAttemptTimeoutMs)
     {
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxAttempts, 1);
+        ArgumentOutOfRangeException.ThrowIfNegative(backoffMs);
+        ArgumentOutOfRangeException.ThrowIfNegative(perAttemptTimeoutMs);
         MaxAttempts = maxAttempts;
         BackoffMs = backoffMs;
         Jitter = jitter;
