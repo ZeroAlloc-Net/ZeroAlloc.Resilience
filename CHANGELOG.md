@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.3.7](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v1.3.6...v1.3.7) (2026-09-24)
+
+
+### Bug Fixes
+
+* generate a proxy for interfaces with policy attributes only on methods ([#153](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/153)) ([12048f0](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/12048f08717be891166885ee3e4075a15f415577))
+* return failures from sync Result methods and UnitResult&lt;E&gt; ([#154](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/154)) ([8bfd667](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/8bfd66733ead70decfed6ea707735b85f85b4a4d)), closes [#151](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/151)
+
 ## [1.3.6](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v1.3.5...v1.3.6) (2026-09-24)
 
 
