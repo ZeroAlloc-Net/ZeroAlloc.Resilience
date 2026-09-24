@@ -101,6 +101,7 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
 
         var diagnosticsBuilder = ImmutableArray.CreateBuilder<Diagnostic>();
         var methodsBuilder     = ImmutableArray.CreateBuilder<MethodModel>();
+        var policyMethods = new System.Collections.Generic.HashSet<IMethodSymbol>(SymbolEqualityComparer.Default);
 
         var slots = new PolicySlotBuilder();
         var classRetrySlot  = classRetry is null ? null : slots.AddInterfaceSlot(PolicyKind.Retry, PolicySlotBuilder.Default(classRetry));
@@ -213,6 +214,8 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
             var cbSlot = ownCb is null ? classCbSlot
                 : slots.AddMethodSlot(member.Name, declarationIndex, PolicyKind.CircuitBreaker, PolicySlotBuilder.Default(ownCb));
 
+            policyMethods.Add(member);
+
             methodsBuilder.Add(new MethodModel(
                 Name: member.Name,
                 ReturnTypeFqn: returnTypeFqn,
@@ -239,15 +242,15 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
         if (methodsBuilder.Count == 0 && diagnosticsBuilder.Count == 0)
             return null;
 
-        // Collect passthrough methods (interface methods that have no policy applied)
+        // Collect passthrough methods (interface methods that have no policy applied). A method is
+        // excluded only when that exact symbol got a policy above; an unattributed overload of a
+        // method whose other overload has a policy still needs its own forwarding method.
         var passthroughBuilder = ImmutableArray.CreateBuilder<PassthroughMethodModel>();
-        var policyMethodNames = new System.Collections.Generic.HashSet<string>(
-            methodsBuilder.Select(static m => m.Name), StringComparer.Ordinal);
 
         foreach (var member in iface.GetMembers().OfType<IMethodSymbol>())
         {
             if (member.MethodKind != MethodKind.Ordinary) continue;
-            if (policyMethodNames.Contains(member.Name)) continue; // already in policy methods
+            if (policyMethods.Contains(member)) continue; // already in policy methods
 
             var ptReturnTypeFqn = member.ReturnType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
             var ptIsAsync = IsAsyncType(member.ReturnType);
