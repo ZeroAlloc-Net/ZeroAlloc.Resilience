@@ -110,6 +110,7 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
             // Validate fallback (read from class-level CircuitBreaker attr, or method-level)
             // The fallback name comes from the CircuitBreakerAttribute on the method or class
             string? fallbackName = null;
+            var fallbackConfigured = false;
             {
                 // Re-query raw AttributeData: Fallback is intentionally excluded from CircuitBreakerConfig
                 // (it is a generator-time string reference, not a runtime config value).
@@ -118,6 +119,7 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
                 if (cbAttr is not null)
                 {
                     fallbackName = GetString(cbAttr, "Fallback");
+                    fallbackConfigured = fallbackName is not null;
                     if (fallbackName is not null)
                     {
                         IMethodSymbol? fallback = null;
@@ -138,8 +140,20 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
             }
 
             var returnTypeFqn = member.ReturnType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-            var (innerType, returnsResult) = UnwrapReturnType(member.ReturnType);
             var isAsync = IsAsyncType(member.ReturnType);
+            var resultType = isAsync ? UnwrapAsyncType(member.ReturnType) : member.ReturnType;
+            var resultKind = ClassifyResult(resultType);
+            var resultTypeFqn = resultKind == ResultKind.None
+                ? null
+                : resultType!.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+
+            // ZR0003: a policy that rejects a call without calling the inner service has to
+            // return a failure, and it cannot build one for a foreign error type.
+            if (resultKind == ResultKind.ForeignError)
+                ReportUnconstructibleError(diagnosticsBuilder, member, (INamedTypeSymbol)resultType!,
+                    isAsync && rateLimit is not null,
+                    isAsync && cbConfig is not null && !fallbackConfigured,
+                    retry?.NonThrowing == true);
 
             var paramList = string.Join(", ", member.Parameters.Select(static p =>
                 $"{p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)} {p.Name}"));
@@ -148,32 +162,11 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
                 string.Equals(p.Type.ToDisplayString(), "System.Threading.CancellationToken", StringComparison.Ordinal)
                     ? "__ct" : p.Name));
 
-            // Resolve NonThrowingValueType: the T in Result<T, ResilienceError> for NonThrowing retry methods.
-            string? nonThrowingValueType = null;
-            if (retry?.NonThrowing == true && isAsync && member.ReturnType is INamedTypeSymbol asyncWrapper
-                && asyncWrapper.TypeArguments.Length == 1
-                && asyncWrapper.TypeArguments[0] is INamedTypeSymbol resultType
-                && resultType.TypeArguments.Length == 2
-                && resultType.OriginalDefinition.ToDisplayString()
-                    .StartsWith("ZeroAlloc.Results.Result", StringComparison.Ordinal))
-            {
-                nonThrowingValueType = resultType.TypeArguments[0]
-                    .ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-            }
-            else if (retry?.NonThrowing == true && !isAsync && member.ReturnType is INamedTypeSymbol syncResultType
-                && syncResultType.TypeArguments.Length == 2
-                && syncResultType.OriginalDefinition.ToDisplayString()
-                    .StartsWith("ZeroAlloc.Results.Result", StringComparison.Ordinal))
-            {
-                nonThrowingValueType = syncResultType.TypeArguments[0]
-                    .ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-            }
-
             methodsBuilder.Add(new MethodModel(
                 Name: member.Name,
                 ReturnTypeFqn: returnTypeFqn,
-                InnerReturnType: innerType,
-                ReturnsResult: returnsResult,
+                ResultKind: resultKind,
+                ResultTypeFqn: resultTypeFqn,
                 IsAsync: isAsync,
                 HasCancellationToken: hasCt,
                 CancellationTokenParamName: ctParamName,
@@ -184,8 +177,7 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
                 Retry: retry,
                 Timeout: timeout,
                 RateLimit: rateLimit,
-                CircuitBreaker: cbConfig,
-                NonThrowingValueType: nonThrowingValueType));
+                CircuitBreaker: cbConfig));
         }
 
         if (methodsBuilder.Count == 0 && diagnosticsBuilder.Count == 0)
@@ -321,16 +313,50 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
                    or "System.Threading.Tasks.Task<TResult>";
     }
 
-    private static (string innerType, bool isResult) UnwrapReturnType(ITypeSymbol returnType)
+    private static ITypeSymbol? UnwrapAsyncType(ITypeSymbol returnType) =>
+        returnType is INamedTypeSymbol { TypeArguments.Length: 1 } named ? named.TypeArguments[0] : null;
+
+    // Only the Result types of ZeroAlloc.Results: Result, Result<T> and Result<T, E>.
+    private static ResultKind ClassifyResult(ITypeSymbol? type)
     {
-        if (returnType is INamedTypeSymbol named && named.TypeArguments.Length == 1)
+        if (type is not INamedTypeSymbol { Name: "Result" } named
+            || !string.Equals(named.ContainingNamespace?.ToDisplayString(), "ZeroAlloc.Results", StringComparison.Ordinal))
+            return ResultKind.None;
+
+        return named.TypeArguments.Length switch
         {
-            var inner = named.TypeArguments[0];
-            var isResult = inner.OriginalDefinition.ToDisplayString()
-                .StartsWith("ZeroAlloc.Results.Result", StringComparison.Ordinal);
-            return (inner.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), isResult);
-        }
-        return ("void", false);
+            0 or 1 => ResultKind.StringError,
+            2 => string.Equals(named.TypeArguments[1].ToDisplayString(), "ZeroAlloc.Resilience.ResilienceError", StringComparison.Ordinal)
+                ? ResultKind.ResilienceError
+                : ResultKind.ForeignError,
+            _ => ResultKind.None,
+        };
+    }
+
+    private static void ReportUnconstructibleError(
+        ImmutableArray<Diagnostic>.Builder diagnostics,
+        IMethodSymbol method,
+        INamedTypeSymbol resultType,
+        bool rateLimitRejects,
+        bool openCircuitRejects,
+        bool nonThrowing)
+    {
+        var location = method.Locations.FirstOrDefault();
+        var resultDisplay = resultType.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
+        var errorDisplay = resultType.TypeArguments[1].ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
+
+        if (rateLimitRejects)
+            diagnostics.Add(Diagnostic.Create(ResilienceDiagnostics.UnconstructibleResultError, location,
+                method.Name, resultDisplay, "[RateLimit]", errorDisplay,
+                "Remove [RateLimit] from this method, or return Result<T, ResilienceError>"));
+        if (openCircuitRejects)
+            diagnostics.Add(Diagnostic.Create(ResilienceDiagnostics.UnconstructibleResultError, location,
+                method.Name, resultDisplay, "[CircuitBreaker] without a Fallback", errorDisplay,
+                "Set Fallback to a method with the same signature, or return Result<T, ResilienceError>"));
+        if (nonThrowing)
+            diagnostics.Add(Diagnostic.Create(ResilienceDiagnostics.UnconstructibleResultError, location,
+                method.Name, resultDisplay, "[Retry] with NonThrowing = true", errorDisplay,
+                "Remove NonThrowing, since retry already passes the inner Result through, or return Result<T, ResilienceError>"));
     }
 
     private static bool SignaturesMatch(IMethodSymbol method, IMethodSymbol fallback)

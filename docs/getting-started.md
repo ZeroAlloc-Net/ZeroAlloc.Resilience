@@ -42,4 +42,4 @@ This registers `ExternalServiceImpl`, all policy objects, and binds `IExternalSe
 
 ## Failure surface
 
-If a method returns `ValueTask<Result<T, E>>` or `Task<Result<T, E>>`, policy failures are returned as `Result.Failure(...)` — no exception thrown. Otherwise `ResilienceException` is thrown with a `Policy` property identifying the cause.
+If a method returns `ValueTask` or `Task` of `Result`, `Result<T>` or `Result<T, ResilienceError>`, policy failures are returned as a failure of that type, with no exception thrown. A `Result<T, E>` with any other `E` gets the inner call's own Result back; see [Result Return Types](guides/result-return-types.md). Otherwise `ResilienceException` is thrown with a `Policy` property identifying the cause.

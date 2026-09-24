@@ -55,7 +55,7 @@ services.AddExternalServiceResilience<ExternalServiceImpl>();
 |---|---|
 | [Fallback](guides/fallback.md) | Declare and implement circuit-breaker fallback methods |
 | [Method-Level Overrides](guides/method-level-overrides.md) | Per-method policy configuration |
-| [Result Return Types](guides/result-return-types.md) | Non-throwing failure path with `Result<T>` |
+| [Result Return Types](guides/result-return-types.md) | Non-throwing failure path with `Result`, `Result<T>` and `Result<T, E>` |
 | [DI Registration](guides/di-registration.md) | Generated extension method, overrides, manual construction |
 
 ### Diagnostics
@@ -64,3 +64,4 @@ services.AddExternalServiceResilience<ExternalServiceImpl>();
 |---|---|---|
 | [ZR0001](diagnostics/ZR0001.md) | Error | Fallback method not found or signature mismatch |
 | [ZR0002](diagnostics/ZR0002.md) | Warning | Timeout configured but method has no `CancellationToken` |
+| [ZR0003](diagnostics/ZR0003.md) | Error | Policy cannot build a failure for this `Result<T, E>` error type |

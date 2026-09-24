@@ -1,9 +1,5 @@
-using System;
-using System.Collections.Immutable;
-using System.IO;
 using System.Linq;
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
 
 namespace ZeroAlloc.Resilience.Generator.Tests;
 
@@ -11,17 +7,6 @@ namespace ZeroAlloc.Resilience.Generator.Tests;
 // accessibility instead of always being public.
 public class GeneratorAccessibilityTests
 {
-    private static readonly MetadataReference[] References =
-        ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
-            .Split(Path.PathSeparator)
-            .Where(static p => Path.GetFileName(p).StartsWith("System.", StringComparison.Ordinal)
-                            || string.Equals(Path.GetFileName(p), "mscorlib.dll", StringComparison.Ordinal)
-                            || string.Equals(Path.GetFileName(p), "netstandard.dll", StringComparison.Ordinal))
-            .Select(static p => (MetadataReference)MetadataReference.CreateFromFile(p))
-            .Append(MetadataReference.CreateFromFile(typeof(RetryAttribute).Assembly.Location))
-            .Append(MetadataReference.CreateFromFile(typeof(Microsoft.Extensions.DependencyInjection.IServiceCollection).Assembly.Location))
-            .ToArray();
-
     [Fact]
     public void InternalInterface_Compiles_WithInternalExtensions()
     {
@@ -37,7 +22,7 @@ public class GeneratorAccessibilityTests
             }
             """;
 
-        var (compilation, errors) = RunAndCompile(source);
+        var (compilation, errors) = TestHelper.RunAndCompile(source);
 
         errors.Should().BeEmpty();
         var extensions = FindAddMethod(compilation, "AddJevApiResilience").ContainingType;
@@ -60,7 +45,7 @@ public class GeneratorAccessibilityTests
             }
             """;
 
-        var (compilation, errors) = RunAndCompile(source);
+        var (compilation, errors) = TestHelper.RunAndCompile(source);
 
         errors.Should().BeEmpty();
         var extensions = FindAddMethod(compilation, "AddUserApiResilience").ContainingType;
@@ -88,7 +73,7 @@ public class GeneratorAccessibilityTests
             }
             """;
 
-        var (compilation, errors) = RunAndCompile(source);
+        var (compilation, errors) = TestHelper.RunAndCompile(source);
 
         errors.Should().BeEmpty();
         FindAddMethod(compilation, "AddPublicApiResilience").ContainingType.DeclaredAccessibility
@@ -102,26 +87,5 @@ public class GeneratorAccessibilityTests
         var methods = compilation.GetSymbolsWithName(name, SymbolFilter.Member).OfType<IMethodSymbol>().ToArray();
         methods.Should().ContainSingle();
         return methods[0];
-    }
-
-    private static (Compilation Compilation, ImmutableArray<Diagnostic> Errors) RunAndCompile(string source)
-    {
-        var parseOptions = CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Latest);
-        var compilation = CSharpCompilation.Create(
-            "TestAssembly",
-            new[] { CSharpSyntaxTree.ParseText(source, parseOptions) },
-            References,
-            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
-
-        CSharpGeneratorDriver
-            .Create(new ResilienceGenerator())
-            .WithUpdatedParseOptions(parseOptions)
-            .RunGeneratorsAndUpdateCompilation(compilation, out var output, out var generatorDiagnostics);
-
-        var errors = generatorDiagnostics
-            .Concat(output.GetDiagnostics())
-            .Where(static d => d.Severity == DiagnosticSeverity.Error)
-            .ToImmutableArray();
-        return (output, errors);
     }
 }

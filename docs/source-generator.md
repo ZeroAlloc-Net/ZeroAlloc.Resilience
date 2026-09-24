@@ -167,7 +167,7 @@ public async ValueTask<string> FetchFallback(string id, CancellationToken ct)
 
 ### No try/catch when not needed
 
-If a method has no circuit breaker and does not return `Result<T>`, the generator emits a direct `return` instead of a wrapped try/catch — eliminating the exception-handler overhead entirely.
+If a method has no circuit breaker and does not return a `Result` whose failure the generator builds, the generator emits a direct `return` instead of a wrapped try/catch — eliminating the exception-handler overhead entirely.
 
 ### Rate limit + circuit breaker are checks, not wrappers
 
@@ -199,3 +199,4 @@ dotnet build
 |----|----------|---------|
 | ZR0001 | Error | Fallback method not found or its signature does not match |
 | ZR0002 | Warning | `[Timeout]` or `PerAttemptTimeoutMs` configured but method has no `CancellationToken` parameter |
+| ZR0003 | Error | `[RateLimit]`, `[CircuitBreaker]` without `Fallback`, or `NonThrowing` on a method returning `Result<T, E>` with an `E` the generator cannot construct |

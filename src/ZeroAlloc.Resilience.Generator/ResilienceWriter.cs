@@ -83,8 +83,8 @@ internal static class ResilienceWriter
         if (method.RateLimit is not null)
         {
             sb.AppendLine("        if (!_rateLimiter.TryAcquire())");
-            if (method.ReturnsResult)
-                sb.AppendLine($"            return global::ZeroAlloc.Results.Result.Failure<{method.InnerReturnType}>(\"Rate limit exceeded.\");");
+            if (method.ReturnsFailureResult)
+                sb.AppendLine($"            return {FailureExpression(method, "\"RateLimit\"", "\"Rate limit exceeded.\"", exceptionExpr: null)};");
             else
                 sb.AppendLine("            throw new global::ZeroAlloc.Resilience.ResilienceException(global::ZeroAlloc.Resilience.ResiliencePolicy.RateLimit, \"Rate limit exceeded.\");");
             sb.AppendLine();
@@ -101,8 +101,8 @@ internal static class ResilienceWriter
                 var configFb = method.IsAsync ? ".ConfigureAwait(false)" : "";
                 sb.AppendLine($"            return {awaitFb}_inner.{method.FallbackMethodName}({method.ArgumentList}){configFb};");
             }
-            else if (method.ReturnsResult)
-                sb.AppendLine($"            return global::ZeroAlloc.Results.Result.Failure<{method.InnerReturnType}>(\"Circuit breaker is open.\");");
+            else if (method.ReturnsFailureResult)
+                sb.AppendLine($"            return {FailureExpression(method, "\"CircuitBreaker\"", "\"Circuit breaker is open.\"", exceptionExpr: null)};");
             else
                 sb.AppendLine("            throw new global::ZeroAlloc.Resilience.ResilienceException(global::ZeroAlloc.Resilience.ResiliencePolicy.CircuitBreaker, \"Circuit breaker is open.\");");
             sb.AppendLine("        }");
@@ -196,21 +196,22 @@ internal static class ResilienceWriter
         sb.AppendLine("            }");
         sb.AppendLine("        }");
         sb.AppendLine("        // All attempts exhausted");
-        if (method.Retry!.NonThrowing && method.NonThrowingValueType is null)
+        if (method.Retry!.NonThrowing && method.ResultKind != ResultKind.ResilienceError)
         {
             // NonThrowing=true but type extraction failed — emit a hard compile error instead of silently generating throwing code
             sb.AppendLine($"#error ZR: [Retry(NonThrowing = true)] requires the method return type to be Result<T, ResilienceError> (on method '{method.Name}')");
         }
-        else if (method.Retry!.NonThrowing && method.NonThrowingValueType is not null)
+        else if (method.ReturnsFailureOnExhaustion)
         {
-            // NonThrowing=true: return Result<T, ResilienceError>.Failure(...) instead of throwing
-            sb.AppendLine($"        return global::ZeroAlloc.Results.Result<{method.NonThrowingValueType}, global::ZeroAlloc.Resilience.ResilienceError>.Failure(");
-            sb.AppendLine($"            new global::ZeroAlloc.Resilience.ResilienceError(\"Retry\", __lastEx?.Message ?? \"All retry attempts failed.\", __lastEx));");
+            // Result return types get a failure of their own type instead of an exception.
+            sb.AppendLine($"        return {FailureExpression(method, "\"Retry\"", "__lastEx?.Message ?? \"All retry attempts failed.\"", "__lastEx")};");
         }
-        else if (method.ReturnsResult)
-            sb.AppendLine($"        return global::ZeroAlloc.Results.Result.Failure<{method.InnerReturnType}>(__lastEx?.Message ?? \"All retry attempts failed.\");");
         else
+        {
+            // Also Result<T, E> with a foreign E: every attempt threw, so there is no inner
+            // Result to return and no way to build an E.
             sb.AppendLine("        throw new global::ZeroAlloc.Resilience.ResilienceException(global::ZeroAlloc.Resilience.ResiliencePolicy.Retry, \"All retry attempts failed.\", __lastEx);");
+        }
     }
 
     private static void WriteSingleCall(StringBuilder sb, MethodModel method, bool hasTotalTimeout)
@@ -230,10 +231,11 @@ internal static class ResilienceWriter
             callArgs = method.ArgumentList;
         }
 
-        // Only emit try/catch if we have something to do in the catch block
-        bool needsCatch = method.CircuitBreaker is not null || method.ReturnsResult;
-        if (needsCatch)
+        if (method.ReturnsFailureResult)
         {
+            // The catch records the exception and the failure is built after it, the same
+            // shape as retry exhaustion.
+            sb.AppendLine("        global::System.Exception __lastEx;");
             sb.AppendLine("        try");
             sb.AppendLine("        {");
             sb.AppendLine($"            var __result = {awaitKw}_inner.{method.Name}({callArgs}){configKw};");
@@ -243,18 +245,54 @@ internal static class ResilienceWriter
             sb.AppendLine("        }");
             sb.AppendLine("        catch (global::System.Exception __ex)");
             sb.AppendLine("        {");
+            sb.AppendLine("            __lastEx = __ex;");
             if (method.CircuitBreaker is not null)
                 sb.AppendLine("            _circuitBreaker.OnFailure(__ex);");
-            if (method.ReturnsResult)
-                sb.AppendLine($"            return global::ZeroAlloc.Results.Result.Failure<{method.InnerReturnType}>(__ex.Message);");
-            else
-                sb.AppendLine("            throw;");
+            sb.AppendLine("        }");
+            sb.AppendLine($"        return {FailureExpression(method, SingleCallPolicyExpression(method, hasTotalTimeout), "__lastEx.Message", "__lastEx")};");
+        }
+        else if (method.CircuitBreaker is not null)
+        {
+            sb.AppendLine("        try");
+            sb.AppendLine("        {");
+            sb.AppendLine($"            var __result = {awaitKw}_inner.{method.Name}({callArgs}){configKw};");
+            sb.AppendLine("            _circuitBreaker.OnSuccess();");
+            sb.AppendLine("            return __result;");
+            sb.AppendLine("        }");
+            sb.AppendLine("        catch (global::System.Exception __ex)");
+            sb.AppendLine("        {");
+            sb.AppendLine("            _circuitBreaker.OnFailure(__ex);");
+            sb.AppendLine("            throw;");
             sb.AppendLine("        }");
         }
         else
         {
             sb.AppendLine($"        return {awaitKw}_inner.{method.Name}({callArgs}){configKw};");
         }
+    }
+
+    // A failure of the method's own Result type. Only valid when ReturnsFailureResult or
+    // ReturnsFailureOnExhaustion holds; a foreign error type never reaches here.
+    private static string FailureExpression(MethodModel method, string policyExpr, string messageExpr, string? exceptionExpr)
+    {
+        if (method.ResultKind == ResultKind.ResilienceError)
+        {
+            var exceptionArg = exceptionExpr is null ? "" : $", {exceptionExpr}";
+            return $"{method.ResultTypeFqn}.Failure(new global::ZeroAlloc.Resilience.ResilienceError({policyExpr}, {messageExpr}{exceptionArg}))";
+        }
+        return $"{method.ResultTypeFqn}.Failure({messageExpr})";
+    }
+
+    // PolicyType of the ResilienceError for a single call that threw: Timeout when the total
+    // timeout fired, otherwise the policy guarding the call.
+    private static string SingleCallPolicyExpression(MethodModel method, bool hasTotalTimeout)
+    {
+        var guard = method.CircuitBreaker is not null ? "\"CircuitBreaker\""
+            : hasTotalTimeout ? "\"Timeout\""
+            : "\"RateLimit\"";
+        return hasTotalTimeout && method.CircuitBreaker is not null
+            ? $"__totalCts.IsCancellationRequested ? \"Timeout\" : {guard}"
+            : guard;
     }
 
     private static void WritePassthrough(StringBuilder sb, PassthroughMethodModel method)

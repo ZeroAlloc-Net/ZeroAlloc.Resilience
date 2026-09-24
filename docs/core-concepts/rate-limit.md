@@ -101,6 +101,6 @@ Setting `BurstSize = MaxPerSecond` gives a fixed sliding window with no burst he
 
 ## Failure on rejection
 
-When the bucket is empty, `ResilienceException` is thrown with `Policy = ResiliencePolicy.RateLimit`. For `Result<T>` return types, `Result.Failure("Rate limit exceeded.")` is returned instead.
+When the bucket is empty, `ResilienceException` is thrown with `Policy = ResiliencePolicy.RateLimit`. For async `Result` and `Result<T>` return types, a `Failure("Rate limit exceeded.")` of that type is returned instead, and `Result<T, ResilienceError>` gets a `ResilienceError` with `PolicyType = "RateLimit"`. A `Result<T, E>` with any other `E` cannot be rate limited; see [Result Return Types](../guides/result-return-types.md).
 
 Rejections do not count toward the circuit breaker's failure counter — the inner call was never made.

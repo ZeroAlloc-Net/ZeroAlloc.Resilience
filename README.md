@@ -158,7 +158,8 @@ Method-level attributes shadow interface-level ones entirely for that method —
 | Return type | On failure |
 |-------------|-----------|
 | `ValueTask<T>` / `Task<T>` | `ResilienceException` thrown with `Policy` property |
-| `ValueTask<Result<T>>` / `Task<Result<T>>` | `Result.Failure(...)` returned — no throw |
+| `ValueTask<Result<T>>` / `Task<Result<T>>`, also `Result` and `Result<T, ResilienceError>` | A failure of that type returned — no throw |
+| `ValueTask<Result<T, E>>` / `Task<Result<T, E>>`, other `E` | The inner call's own Result returned; see [Result Return Types](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/guides/result-return-types.md) |
 
 ```csharp
 try
@@ -179,6 +180,7 @@ catch (ResilienceException ex) when (ex.Policy == ResiliencePolicy.CircuitBreake
 |----|----------|-------------|
 | [ZR0001](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/diagnostics/ZR0001.md) | Error | Fallback method not found or signature mismatch |
 | [ZR0002](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/diagnostics/ZR0002.md) | Warning | Timeout configured but method has no `CancellationToken` |
+| [ZR0003](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/diagnostics/ZR0003.md) | Error | Policy cannot build a failure for this `Result<T, E>` error type |
 
 ---
 

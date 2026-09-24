@@ -116,7 +116,7 @@ When the circuit is open and no `Fallback` is configured, the proxy throws:
 throw new ResilienceException(ResiliencePolicy.CircuitBreaker, "Circuit breaker is open.");
 ```
 
-For `Result<T>` return types it returns `Result.Failure("Circuit breaker is open.")`.
+For `Result<T>` return types it returns `Result<T>.Failure("Circuit breaker is open.")`. A `Result<T, E>` with a foreign `E` requires a fallback: without one, the generator reports [ZR0003](../diagnostics/ZR0003.md).
 
 ---
 
