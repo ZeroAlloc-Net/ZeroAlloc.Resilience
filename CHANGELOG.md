@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.5](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v1.3.4...v1.3.5) (2026-09-24)
+
+
+### Bug Fixes
+
+* generated DI extension follows the interface's accessibility ([#146](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/146)) ([598ca6f](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/598ca6f63e7b366bdbc172318497df151f3aa247)), closes [#145](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/145)
+
 ## [1.3.4](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v1.3.3...v1.3.4) (2026-09-20)
 
 
