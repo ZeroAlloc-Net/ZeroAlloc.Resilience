@@ -65,3 +65,4 @@ services.AddExternalServiceResilience<ExternalServiceImpl>();
 | [ZR0001](diagnostics/ZR0001.md) | Error | Fallback method not found or signature mismatch |
 | [ZR0002](diagnostics/ZR0002.md) | Warning | Timeout configured but method has no `CancellationToken` |
 | [ZR0003](diagnostics/ZR0003.md) | Error | Policy cannot build a failure for this `Result<T, E>` error type |
+| [ZR0004](diagnostics/ZR0004.md) | Error | Invalid policy attribute value |

@@ -76,10 +76,15 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
             break;
         }
 
-        var classRetry          = ParseRetry(GetAttribute(iface, RetryFqn));
-        var classTimeout        = ParseTimeout(GetAttribute(iface, TimeoutFqn));
-        var classRateLimit      = ParseRateLimit(GetAttribute(iface, RateLimitFqn));
-        var classCircuitBreaker = ParseCircuitBreaker(GetAttribute(iface, CircuitBreakerFqn));
+        var retryAttr          = GetAttribute(iface, RetryFqn);
+        var timeoutAttr        = GetAttribute(iface, TimeoutFqn);
+        var rateLimitAttr      = GetAttribute(iface, RateLimitFqn);
+        var circuitBreakerAttr = GetAttribute(iface, CircuitBreakerFqn);
+
+        var classRetry          = ParseRetry(retryAttr);
+        var classTimeout        = ParseTimeout(timeoutAttr);
+        var classRateLimit      = ParseRateLimit(rateLimitAttr);
+        var classCircuitBreaker = ParseCircuitBreaker(circuitBreakerAttr);
 
         // Skip interfaces with no policy attributes at all
         if (classRetry is null && classTimeout is null && classRateLimit is null && classCircuitBreaker is null)
@@ -103,6 +108,13 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
         var methodsBuilder     = ImmutableArray.CreateBuilder<MethodModel>();
         var policyMethods = new System.Collections.Generic.HashSet<IMethodSymbol>(SymbolEqualityComparer.Default);
 
+        // ZR0004: interface-level attribute values, reported once (not once per method).
+        var ifaceLocation = iface.Locations.FirstOrDefault();
+        ValidateAttributeValues(diagnosticsBuilder, retryAttr, RetryRules, iface.Name, ifaceLocation);
+        ValidateAttributeValues(diagnosticsBuilder, timeoutAttr, TimeoutRules, iface.Name, ifaceLocation);
+        ValidateAttributeValues(diagnosticsBuilder, rateLimitAttr, RateLimitRules, iface.Name, ifaceLocation);
+        ValidateAttributeValues(diagnosticsBuilder, circuitBreakerAttr, CircuitBreakerRules, iface.Name, ifaceLocation);
+
         var slots = new PolicySlotBuilder();
         var classRetrySlot  = classRetry is null ? null : slots.AddInterfaceSlot(PolicyKind.Retry, PolicySlotBuilder.Default(classRetry));
         var classTimeoutSlot = classTimeout is null ? null : slots.AddInterfaceSlot(PolicyKind.Timeout, PolicySlotBuilder.Default(classTimeout));
@@ -116,14 +128,24 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
             var declarationIndex = slots.NextDeclarationIndex(member.Name);
 
             // Effective config: method-level ?? class-level
-            var ownRetry     = ParseRetry(GetAttribute(member, RetryFqn));
-            var ownTimeout   = ParseTimeout(GetAttribute(member, TimeoutFqn));
-            var ownRateLimit = ParseRateLimit(GetAttribute(member, RateLimitFqn));
-            var ownCb        = ParseCircuitBreaker(GetAttribute(member, CircuitBreakerFqn));
+            var ownRetryAttr     = GetAttribute(member, RetryFqn);
+            var ownTimeoutAttr   = GetAttribute(member, TimeoutFqn);
+            var ownRateLimitAttr = GetAttribute(member, RateLimitFqn);
+            var ownCbAttr        = GetAttribute(member, CircuitBreakerFqn);
+            var ownRetry     = ParseRetry(ownRetryAttr);
+            var ownTimeout   = ParseTimeout(ownTimeoutAttr);
+            var ownRateLimit = ParseRateLimit(ownRateLimitAttr);
+            var ownCb        = ParseCircuitBreaker(ownCbAttr);
             var retry     = ownRetry ?? classRetry;
             var timeout   = ownTimeout ?? classTimeout;
             var rateLimit = ownRateLimit ?? classRateLimit;
             var cbConfig  = ownCb ?? classCircuitBreaker;
+
+            // ZR0004: method-level attribute values, reported once per method (not per interface).
+            ValidateAttributeValues(diagnosticsBuilder, ownRetryAttr, RetryRules, member.Name, member.Locations.FirstOrDefault());
+            ValidateAttributeValues(diagnosticsBuilder, ownTimeoutAttr, TimeoutRules, member.Name, member.Locations.FirstOrDefault());
+            ValidateAttributeValues(diagnosticsBuilder, ownRateLimitAttr, RateLimitRules, member.Name, member.Locations.FirstOrDefault());
+            ValidateAttributeValues(diagnosticsBuilder, ownCbAttr, CircuitBreakerRules, member.Name, member.Locations.FirstOrDefault());
 
             if (retry is null && timeout is null && rateLimit is null && cbConfig is null)
                 continue; // no policy on this method
@@ -150,10 +172,10 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
             string? fallbackName = null;
             var fallbackConfigured = false;
             {
-                // Re-query raw AttributeData: Fallback is intentionally excluded from CircuitBreakerConfig
-                // (it is a generator-time string reference, not a runtime config value).
-                // We cannot read it from cbConfig, so we go back to the attribute directly.
-                var cbAttr = GetAttribute(member, CircuitBreakerFqn) ?? GetAttribute(iface, CircuitBreakerFqn);
+                // Fallback is intentionally excluded from CircuitBreakerConfig (it is a
+                // generator-time string reference, not a runtime config value), so it is read
+                // directly from the attribute already fetched above.
+                var cbAttr = ownCbAttr ?? circuitBreakerAttr;
                 if (cbAttr is not null)
                 {
                     fallbackName = GetString(cbAttr, "Fallback");
@@ -361,6 +383,85 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
             if (string.Equals(kv.Key, name, StringComparison.Ordinal))
                 return kv.Value.Value as string;
         return null;
+    }
+
+    private static bool TryGetInt(AttributeData attr, string name, out int value)
+    {
+        foreach (var kv in attr.NamedArguments)
+        {
+            if (string.Equals(kv.Key, name, StringComparison.Ordinal) && kv.Value.Value is int v)
+            {
+                value = v;
+                return true;
+            }
+        }
+        value = default;
+        return false;
+    }
+
+    // ── ZR0004: invalid policy attribute values ────────────────────────────────
+    // One rule per property the runtime policy constructor validates with
+    // ArgumentOutOfRangeException. A property that is never explicitly set gets the
+    // constructor's own default, which is always valid, so unset properties are skipped.
+
+    private readonly record struct AttributeRule(string Property, int Minimum, bool Exclusive, string RuleText)
+    {
+        public bool IsValid(int value) => Exclusive ? value > Minimum : value >= Minimum;
+    }
+
+    private static readonly ImmutableArray<AttributeRule> RetryRules = ImmutableArray.Create(
+        new AttributeRule("MaxAttempts", 1, Exclusive: false, "at least 1"),
+        new AttributeRule("BackoffMs", 0, Exclusive: false, "at least 0"),
+        new AttributeRule("PerAttemptTimeoutMs", 0, Exclusive: false, "at least 0"));
+
+    private static readonly ImmutableArray<AttributeRule> TimeoutRules = ImmutableArray.Create(
+        new AttributeRule("Ms", 0, Exclusive: true, "greater than 0"));
+
+    private static readonly ImmutableArray<AttributeRule> CircuitBreakerRules = ImmutableArray.Create(
+        new AttributeRule("MaxFailures", 1, Exclusive: false, "at least 1"),
+        new AttributeRule("ResetMs", 0, Exclusive: false, "at least 0"),
+        new AttributeRule("HalfOpenProbes", 1, Exclusive: false, "at least 1"));
+
+    private static readonly ImmutableArray<AttributeRule> RateLimitRules = ImmutableArray.Create(
+        new AttributeRule("MaxPerSecond", 0, Exclusive: false, "at least 0"),
+        new AttributeRule("BurstSize", 0, Exclusive: false, "at least 0"));
+
+    // Reports one ZR0004 per invalid, explicitly-set property. Location prefers where the
+    // attribute is written (its ApplicationSyntaxReference), falling back to the member's own
+    // location when no syntax reference is available (e.g. attributes from metadata).
+    private static void ValidateAttributeValues(
+        ImmutableArray<Diagnostic>.Builder diagnostics,
+        AttributeData? attr,
+        ImmutableArray<AttributeRule> rules,
+        string memberName,
+        Location? fallbackLocation)
+    {
+        if (attr is null) return;
+
+        var location = attr.ApplicationSyntaxReference is { } syntaxRef
+            ? Location.Create(syntaxRef.SyntaxTree, syntaxRef.Span)
+            : fallbackLocation;
+        var attributeDisplay = AttributeDisplayName(attr);
+
+        foreach (var rule in rules)
+        {
+            if (!TryGetInt(attr, rule.Property, out var value)) continue;
+            if (rule.IsValid(value)) continue;
+
+            diagnostics.Add(Diagnostic.Create(
+                ResilienceDiagnostics.InvalidAttributeValue,
+                location,
+                attributeDisplay, memberName, rule.Property, rule.RuleText, value));
+        }
+    }
+
+    // "RetryAttribute" -> "[Retry]"
+    private static string AttributeDisplayName(AttributeData attr)
+    {
+        var name = attr.AttributeClass?.Name ?? string.Empty;
+        if (name.EndsWith("Attribute", StringComparison.Ordinal))
+            name = name.Substring(0, name.Length - "Attribute".Length);
+        return $"[{name}]";
     }
 
     // ── Return type helpers ────────────────────────────────────────────────────

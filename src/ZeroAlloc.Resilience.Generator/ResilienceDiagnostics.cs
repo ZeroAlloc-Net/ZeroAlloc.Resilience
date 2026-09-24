@@ -35,4 +35,16 @@ internal static class ResilienceDiagnostics
         category: Category,
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
+
+    /// <summary>
+    /// ZR0004 — A policy attribute property is explicitly set to a value the runtime policy
+    /// constructor rejects with ArgumentOutOfRangeException (Error).
+    /// </summary>
+    public static readonly DiagnosticDescriptor InvalidAttributeValue = new(
+        id: "ZR0004",
+        title: "Invalid policy attribute value",
+        messageFormat: "{0} on '{1}'. {2} must be {3}, but is {4}.",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
 }

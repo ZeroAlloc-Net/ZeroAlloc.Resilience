@@ -260,3 +260,4 @@ dotnet build
 | ZR0001 | Error | Fallback method not found or its signature does not match |
 | ZR0002 | Warning | `[Timeout]` or `PerAttemptTimeoutMs` configured but method has no `CancellationToken` parameter |
 | ZR0003 | Error | `[RateLimit]`, `[CircuitBreaker]` without `Fallback`, or `NonThrowing` on a method returning `Result<T, E>` with an `E` the generator cannot construct |
+| ZR0004 | Error | A policy attribute property is explicitly set to a value the runtime policy constructor would reject, for example `[Timeout(Ms = 0)]` |
