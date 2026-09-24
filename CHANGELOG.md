@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.8](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v1.3.7...v1.3.8) (2026-09-24)
+
+
+### Bug Fixes
+
+* compile proxies for methods returning void, ValueTask or Task ([#157](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/157)) ([76bf77c](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/76bf77c8e785deb8c2375c46a6c915c3a2a0383e)), closes [#156](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/156)
+
 ## [1.3.7](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v1.3.6...v1.3.7) (2026-09-24)
 
 
