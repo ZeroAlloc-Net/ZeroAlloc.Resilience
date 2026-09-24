@@ -1,5 +1,23 @@
 # Changelog
 
+## [2.0.0](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v1.3.8...v2.0.0) (2026-09-24)
+
+
+### ⚠ BREAKING CHANGES
+
+* generate a per-interface policy set ([#162](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/162))
+
+### Features
+
+* generate a per-interface policy set ([#162](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/162)) ([89d41f3](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/89d41f38c008d7f9c60bc293301fb01701570f7d))
+* **generator:** report invalid policy attribute values as ZR0004 ([#167](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/167)) ([cd0f04a](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/cd0f04a0104abf0a1621b70436818aa3aade05e3))
+
+
+### Bug Fixes
+
+* **core:** cap retry backoff so large attempt counts cannot overflow ([#165](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/165)) ([096d1f3](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/096d1f36eecfd24476158dc6c66a356a32564580)), closes [#160](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/160)
+* **generator:** forward unattributed overloads of a method with a policy ([#166](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/166)) ([f615170](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/f6151702b05ebdab0aa49b0f7b14d14203994353)), closes [#159](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/159)
+
 ## [1.3.8](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v1.3.7...v1.3.8) (2026-09-24)
 
 
