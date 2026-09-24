@@ -15,6 +15,12 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
     private const string RateLimitFqn      = "ZeroAlloc.Resilience.RateLimitAttribute";
     private const string CircuitBreakerFqn = "ZeroAlloc.Resilience.CircuitBreakerAttribute";
 
+    // "IJevApi" -> "JevApi", "IInvoiceApi" -> "InvoiceApi", "Item" -> "Item", "I" -> "I"
+    internal static string ServiceName(string interfaceName) =>
+        interfaceName.Length > 1 && interfaceName[0] == 'I' && char.IsUpper(interfaceName[1])
+            ? interfaceName.Substring(1)
+            : interfaceName;
+
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
 #pragma warning disable EPS06 // IncrementalValuesProvider is a struct; hidden copies are unavoidable in the incremental pipeline API
@@ -264,7 +270,7 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
             InterfaceName: iface.Name,
             InterfaceFqn: interfaceFqn,
             IsPublic: IsEffectivelyPublic(iface),
-            PoliciesClassName: iface.Name.TrimStart('I') + "ResiliencePolicies",
+            PoliciesClassName: ServiceName(iface.Name) + "ResiliencePolicies",
             Slots: slots.ToImmutable(),
             ClassRetry: classRetry,
             ClassTimeout: classTimeout,

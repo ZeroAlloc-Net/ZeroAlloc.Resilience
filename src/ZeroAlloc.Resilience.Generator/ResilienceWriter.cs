@@ -328,7 +328,7 @@ internal static class ResilienceWriter
 
     private static void WriteDiExtension(StringBuilder sb, ResilienceModel model)
     {
-        var name = model.InterfaceName.TrimStart('I');
+        var name = ResilienceGenerator.ServiceName(model.InterfaceName);
         var policies = model.PoliciesClassName;
 
         // Partial declarations must agree on accessibility, so non-public interfaces get their
@@ -363,7 +363,7 @@ internal static class ResilienceWriter
 
     private static void WriteAddResilience(StringBuilder sb, ResilienceModel model, bool withConfigure)
     {
-        var name = model.InterfaceName.TrimStart('I');
+        var name = ResilienceGenerator.ServiceName(model.InterfaceName);
         var policies = model.PoliciesClassName;
 
         sb.AppendLine($"    public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection Add{name}Resilience<");

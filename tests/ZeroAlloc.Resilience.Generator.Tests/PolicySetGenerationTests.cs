@@ -144,6 +144,38 @@ public class PolicySetGenerationTests
             .And.Contain("public global::ZeroAlloc.Resilience.CircuitBreakerPolicy CircuitBreaker { get; set; } = new global::ZeroAlloc.Resilience.CircuitBreakerPolicy(5, 1000, 2);");
     }
 
+    [Fact]
+    public void InterfaceName_StripsOneLeadingI_BeforeUppercase()
+    {
+        var (compilation, errors) = TestHelper.RunAndCompile(Usings + """
+            [Retry(MaxAttempts = 2)]
+            public interface IInvoiceApi
+            {
+                ValueTask<string> GetAsync(CancellationToken ct);
+            }
+            """);
+
+        errors.Should().BeEmpty();
+        compilation.GetTypeByMetadataName("Repro.InvoiceApiResiliencePolicies").Should().NotBeNull();
+        compilation.GetSymbolsWithName("AddInvoiceApiResilience", SymbolFilter.Member).Should().NotBeEmpty();
+    }
+
+    [Fact]
+    public void InterfaceName_WithoutLeadingI_KeepsFullName()
+    {
+        var (compilation, errors) = TestHelper.RunAndCompile(Usings + """
+            [Retry(MaxAttempts = 2)]
+            public interface Item
+            {
+                ValueTask<string> GetAsync(CancellationToken ct);
+            }
+            """);
+
+        errors.Should().BeEmpty();
+        compilation.GetTypeByMetadataName("Repro.ItemResiliencePolicies").Should().NotBeNull();
+        compilation.GetSymbolsWithName("AddItemResilience", SymbolFilter.Member).Should().NotBeEmpty();
+    }
+
     // "Name: Type" for every property, ordered by name.
     private static string[] Slots(Compilation compilation, string metadataName) =>
         compilation.GetTypeByMetadataName(metadataName)!
