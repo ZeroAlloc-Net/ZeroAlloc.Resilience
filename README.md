@@ -66,7 +66,7 @@ Full methodology + self-benchmark: [docs/performance.md](https://github.com/Zero
 | Fallback | Method called when circuit is open — same signature, no allocation |
 | `Result<T>` support | Return `Result<T>` to get failures without exceptions |
 | Method-level overrides | Any attribute on a method shadows the interface-level config for that method |
-| DI integration | Generated `Add{Service}Resilience<TImpl>()` extension registers everything |
+| DI integration | Generated `Add{Service}Resilience<TImpl>()` extension registers the implementation, a `{Service}ResiliencePolicies` singleton, and the proxy |
 
 ---
 
@@ -193,7 +193,7 @@ Full docs live in [`docs/`](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilienc
 - [Source Generator](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/source-generator.md)
 - [Performance](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/performance.md)
 - Core concepts: [Retry](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/core-concepts/retry.md) · [Timeout](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/core-concepts/timeout.md) · [Rate Limit](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/core-concepts/rate-limit.md) · [Circuit Breaker](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/core-concepts/circuit-breaker.md) · [Execution Order](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/core-concepts/execution-order.md)
-- Guides: [Fallback](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/guides/fallback.md) · [Method-Level Overrides](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/guides/method-level-overrides.md) · [Result Return Types](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/guides/result-return-types.md) · [DI Registration](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/guides/di-registration.md)
+- Guides: [Fallback](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/guides/fallback.md) · [Method-Level Overrides](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/guides/method-level-overrides.md) · [Result Return Types](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/guides/result-return-types.md) · [DI Registration](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/guides/di-registration.md) · [Migrating to 2.0](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/guides/migrating-to-v2.md)
 
 ---
 

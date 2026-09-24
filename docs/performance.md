@@ -71,7 +71,7 @@ Rate-limit and timeout limits in the all-policies harness are set to `int.MaxVal
 
 - **No boxing** — `CircuitBreakerFsm` and `RateLimiter` use `long` fields; enum values cast to/from `long` is a no-op at the CPU level.
 - **No closures, no delegates** — the proxy is a concrete class with a concrete method. Nothing is captured.
-- **No LINQ on the hot path** — branching is compiled into `if` checks and a `for` loop with literal values.
+- **No LINQ on the hot path** — branching is compiled into `if` checks and a `for` loop. Values are read from `readonly` fields holding sealed policy objects; no allocation per call, and the per-attempt `CancellationTokenSource` is created only when a per-attempt timeout is set.
 - **`CancellationTokenSource` is the only unavoidable allocation** — one per call when `[Timeout]` is configured. Methods without `[Timeout]` allocate nothing.
 
 ## Running the benchmarks yourself

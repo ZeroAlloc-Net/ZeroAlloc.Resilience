@@ -6,7 +6,7 @@ sidebar_position: 4
 
 # DI Registration
 
-The generator emits a `Add{ServiceName}Resilience<TImpl>()` extension method on `IServiceCollection` that registers everything — the implementation, all policy objects, and the proxy — in one call.
+The generator emits three extension methods on `IServiceCollection` for each annotated interface: `Add{Name}Resilience<TImpl>()`, an overload that takes a `configure` callback, and `Add{Name}ResiliencePolicies()` for hosts that build the proxy themselves.
 
 ---
 
@@ -18,126 +18,174 @@ builder.Services.AddExternalServiceResilience<ExternalServiceImpl>();
 
 This registers:
 - `ExternalServiceImpl` as **transient**
-- `RetryPolicy` as **singleton** (stateless — all state is in the proxy loop)
-- `TimeoutPolicy` as **singleton** (stateless)
-- `RateLimiter` as **singleton** (or transient if `Scope = RateLimitScope.Instance`)
-- `CircuitBreakerPolicy` as **singleton** (stateful — circuit state is shared)
+- `ExternalServiceResiliencePolicies` as a **singleton**
 - `IExternalService` → `IExternalServiceResilienceProxy` as **transient**
+
+No `RetryPolicy`, `TimeoutPolicy`, `RateLimiter` or `CircuitBreakerPolicy` is registered in the container on its own. The proxy reads every value from the `ExternalServiceResiliencePolicies` singleton instead.
 
 ---
 
-## Generated extension method
+## Generated code
+
+For an interface carrying all four policies, the generator emits these three methods (copied from the generator's own snapshot tests):
 
 ```csharp
 public static partial class ResilienceServiceCollectionExtensions
 {
-    public static IServiceCollection AddExternalServiceResilience<TImpl>(
-        this IServiceCollection services)
-        where TImpl : class, IExternalService
+    public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddExternalServiceResiliencePolicies(
+        this global::Microsoft.Extensions.DependencyInjection.IServiceCollection services,
+        global::System.Action<global::System.IServiceProvider, ExternalServiceResiliencePolicies>? configure = null)
+    {
+        global::Microsoft.Extensions.DependencyInjection.Extensions.ServiceCollectionDescriptorExtensions.TryAddSingleton<ExternalServiceResiliencePolicies>(services, sp =>
+        {
+            var policies = new ExternalServiceResiliencePolicies();
+            configure?.Invoke(sp, policies);
+            return policies;
+        });
+        return services;
+    }
+
+    public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddExternalServiceResilience<
+        [global::System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(
+            global::System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicConstructors)]
+        TImpl>(
+        this global::Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        where TImpl : class, global::T.IExternalService
     {
         services.AddTransient<TImpl>();
-        services.AddSingleton(new RetryPolicy(3, 200, true, 1000));
-        services.AddSingleton(new TimeoutPolicy(5000));
-        services.AddSingleton(new RateLimiter(100, 10, RateLimitScope.Shared));
-        services.AddSingleton(new CircuitBreakerPolicy(5, 1000, 1));
-        services.AddTransient<IExternalService>(sp =>
-            new IExternalServiceResilienceProxy(
-                sp.GetRequiredService<TImpl>(),
-                sp.GetRequiredService<RetryPolicy>(),
-                sp.GetRequiredService<TimeoutPolicy>(),
-                sp.GetRequiredService<RateLimiter>(),
-                sp.GetRequiredService<CircuitBreakerPolicy>()));
+        services.AddExternalServiceResiliencePolicies();
+        services.AddTransient<global::T.IExternalService>(sp => new IExternalServiceResilienceProxy(
+            sp.GetRequiredService<TImpl>(), sp.GetRequiredService<ExternalServiceResiliencePolicies>()));
+        return services;
+    }
+
+    public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddExternalServiceResilience<
+        [global::System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(
+            global::System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicConstructors)]
+        TImpl>(
+        this global::Microsoft.Extensions.DependencyInjection.IServiceCollection services,
+        global::System.Action<global::System.IServiceProvider, ExternalServiceResiliencePolicies> configure)
+        where TImpl : class, global::T.IExternalService
+    {
+        global::System.ArgumentNullException.ThrowIfNull(configure);
+        services.AddTransient<TImpl>();
+        services.AddExternalServiceResiliencePolicies(configure);
+        services.AddTransient<global::T.IExternalService>(sp => new IExternalServiceResilienceProxy(
+            sp.GetRequiredService<TImpl>(), sp.GetRequiredService<ExternalServiceResiliencePolicies>()));
         return services;
     }
 }
 ```
 
+`Add{Name}ResiliencePolicies` uses `TryAddSingleton`, so it never overwrites a `{Name}ResiliencePolicies` the application registered first.
+
 ---
 
 ## Naming convention
 
-The extension method name is `Add{InterfaceName.TrimStart('I')}Resilience<TImpl>`:
+The extension method name is `Add{InterfaceName.TrimStart('I')}Resilience<TImpl>`, and the policies class is `{InterfaceName.TrimStart('I')}ResiliencePolicies`:
 
-| Interface | Extension method |
-|-----------|-----------------|
-| `IExternalService` | `AddExternalServiceResilience<TImpl>()` |
-| `IPaymentGateway` | `AddPaymentGatewayResilience<TImpl>()` |
-| `DataStore` (no leading I) | `AddDataStoreResilience<TImpl>()` |
+| Interface | Extension method | Policies class |
+|-----------|-----------------|-----------------|
+| `IExternalService` | `AddExternalServiceResilience<TImpl>()` | `ExternalServiceResiliencePolicies` |
+| `IPaymentGateway` | `AddPaymentGatewayResilience<TImpl>()` | `PaymentGatewayResiliencePolicies` |
+| `DataStore` (no leading I) | `AddDataStoreResilience<TImpl>()` | `DataStoreResiliencePolicies` |
 
 ---
 
-## Overriding policy values at registration time
+## Configuring policies
 
-The generated extension method bakes the attribute values. To override at registration time, register the policy objects manually before calling the extension method — DI will not register duplicates if you register first:
+Pass a `configure` callback to set values from configuration or any other service:
 
 ```csharp
-// Override CircuitBreakerPolicy — shorter reset for testing
-builder.Services.AddSingleton(new CircuitBreakerPolicy(maxFailures: 2, resetMs: 100, halfOpenProbes: 1));
+builder.Services.AddExternalServiceResilience<ExternalServiceImpl>((sp, p) =>
+{
+    var o = sp.GetRequiredService<IOptions<ExternalOptions>>().Value;
+    p.Retry = new RetryPolicy(o.MaxAttempts, o.BackoffMs, jitter: true, perAttemptTimeoutMs: 0);
+});
+```
+
+`configure` runs once, the first time `ExternalServiceResiliencePolicies` is resolved from the container. Every proxy built after that shares the same policies instance; the proxy copies each slot into a `readonly` field when it is constructed, so a value changed later has no effect on proxies already built.
+
+`configure` can only change the value of a slot the interface already declares. It cannot add a policy the attributes do not declare — whether a method has a retry loop, a timeout, a rate-limit check or a circuit check is fixed when the generator runs, not by `configure`.
+
+A per-attempt timeout (`RetryPolicy.PerAttemptTimeoutMs`) set only through `configure` has no effect on a method with no `CancellationToken` parameter — the generator only emits the per-attempt cancellation source for methods that can take a token. ZR0002 warns about a per-attempt timeout with no `CancellationToken` parameter, but only when the attribute itself asks for one; it does not know what `configure` will set at runtime, so it cannot warn about that case.
+
+---
+
+## Registering your own policies instance
+
+Register a `{Name}ResiliencePolicies` instance yourself before calling `Add{Name}Resilience`, and it takes precedence:
+
+```csharp
+builder.Services.AddSingleton(new ExternalServiceResiliencePolicies
+{
+    Retry = new RetryPolicy(maxAttempts: 5, backoffMs: 100, jitter: true, perAttemptTimeoutMs: 0),
+});
 builder.Services.AddExternalServiceResilience<ExternalServiceImpl>();
-// The AddSingleton in the extension method is a no-op — singleton already registered
 ```
 
-> Note: `IServiceCollection.AddSingleton` registers an additional instance if called twice; use `TryAddSingleton` semantics by registering first.
-
-Alternatively, register the full pipeline manually:
-
-```csharp
-builder.Services.AddTransient<ExternalServiceImpl>();
-builder.Services.AddSingleton(new RetryPolicy(maxAttempts: 5, backoffMs: 100, jitter: true, perAttemptTimeoutMs: 0));
-builder.Services.AddSingleton(new CircuitBreakerPolicy(maxFailures: 3, resetMs: 500, halfOpenProbes: 2));
-builder.Services.AddTransient<IExternalService>(sp =>
-    new IExternalServiceResilienceProxy(
-        sp.GetRequiredService<ExternalServiceImpl>(),
-        sp.GetRequiredService<RetryPolicy>(),
-        sp.GetRequiredService<CircuitBreakerPolicy>()));
-```
+Because `Add{Name}ResiliencePolicies` uses `TryAddSingleton`, the registration above wins. If you also pass a `configure` callback to `AddExternalServiceResilience`, it does not run — the policies instance already exists.
 
 ---
 
-## Multiple interfaces sharing the same implementation
+## Isolation
 
-Each interface gets its own set of singleton policy objects, keyed by type. Two interfaces with `[CircuitBreaker]` get two independent `CircuitBreakerPolicy` singletons — they do not share circuit state:
+Each interface gets its own `{Name}ResiliencePolicies` singleton. Two interfaces with `[CircuitBreaker]` never share circuit state, even when both use the same implementation type:
 
 ```csharp
 builder.Services.AddExternalServiceResilience<ExternalServiceImpl>();
 builder.Services.AddPaymentGatewayResilience<PaymentGatewayImpl>();
-// Independent CircuitBreakerPolicy for each interface
+// ExternalServiceResiliencePolicies.CircuitBreaker and PaymentGatewayResiliencePolicies.CircuitBreaker
+// are independent circuit breakers.
+```
+
+---
+
+## Hosts that build the proxy
+
+Some hosts construct the generated proxy themselves rather than calling `Add{Name}Resilience<TImpl>()` — ZeroAlloc.Rest, ZeroAlloc.Outbox and ZeroAlloc.Scheduling all do this. Register only the policies, and resolve them where the proxy is built:
+
+```csharp
+services.AddPaymentApiResiliencePolicies();
+services.AddRestResilience<IPaymentApi, PaymentApiClient, IPaymentApiResilienceProxy>(
+    (client, sp) => new IPaymentApiResilienceProxy(client, sp.GetRequiredService<PaymentApiResiliencePolicies>()));
 ```
 
 ---
 
 ## Scoped lifetime
 
-The proxy itself is registered as **transient** because it is stateless — all state lives in the injected singleton policy objects. You can safely inject `IExternalService` into scoped or transient services.
+The proxy is registered as **transient** because all of its state is copied into `readonly` fields at construction; the proxy itself holds nothing mutable beyond those references. You can safely inject `IExternalService` into scoped or transient services.
 
-If you need the proxy to be scoped (e.g. to share a request-scoped implementation), register manually:
+If you need the proxy to be scoped, register it manually:
 
 ```csharp
 builder.Services.AddScoped<ExternalServiceImpl>();
+builder.Services.AddExternalServiceResiliencePolicies();
 builder.Services.AddScoped<IExternalService>(sp =>
     new IExternalServiceResilienceProxy(
         sp.GetRequiredService<ExternalServiceImpl>(),
-        sp.GetRequiredService<RetryPolicy>(),
-        sp.GetRequiredService<CircuitBreakerPolicy>()));
+        sp.GetRequiredService<ExternalServiceResiliencePolicies>()));
 ```
-
----
-
-## Keyed services (.NET 8+)
-
-The generated extension method uses unkeyed registration. If you need keyed services (e.g. two proxies for the same interface with different configs), register manually using `AddKeyedTransient` / `AddKeyedSingleton`.
 
 ---
 
 ## Without DI
 
-The proxy can be constructed directly — it is a plain class with a constructor:
+The proxy is a plain class with a two-argument constructor — the inner implementation and a policies instance:
 
 ```csharp
-var inner  = new ExternalServiceImpl();
-var retry  = new RetryPolicy(3, 200, false, 0);
-var cbPolicy = new CircuitBreakerPolicy(5, 1_000, 1);
-IExternalService proxy = new IExternalServiceResilienceProxy(inner, retry, cbPolicy);
+var inner = new ExternalServiceImpl();
+IExternalService proxy = new IExternalServiceResilienceProxy(inner, new ExternalServiceResiliencePolicies());
 ```
 
-Pass only the policy objects that the proxy requires — if the interface only has `[Retry]` and `[CircuitBreaker]`, the constructor only takes those two plus the inner implementation.
+`new ExternalServiceResiliencePolicies()` is a complete, valid configuration — every slot defaults to its attribute value. Set individual slots on the instance before passing it to the constructor to change values:
+
+```csharp
+var policies = new ExternalServiceResiliencePolicies
+{
+    Retry = new RetryPolicy(5, 100, jitter: true, perAttemptTimeoutMs: 0),
+};
+IExternalService proxy = new IExternalServiceResilienceProxy(inner, policies);
+```
