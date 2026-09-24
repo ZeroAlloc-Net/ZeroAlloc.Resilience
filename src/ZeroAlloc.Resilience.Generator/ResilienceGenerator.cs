@@ -167,12 +167,17 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
                 : resultType!.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
 
             // ZR0003: a policy that rejects a call without calling the inner service has to
-            // return a failure, and it cannot build one for a foreign error type.
+            // return a failure, and it cannot build one for a foreign error type. Rejections are
+            // only reported for async Result<T, E>: sync methods and UnitResult<E> compiled and
+            // threw ResilienceException before #151, and keep doing so.
             if (resultKind == ResultKind.ForeignError)
+            {
+                var reportsRejections = isAsync && string.Equals(resultType!.Name, "Result", StringComparison.Ordinal);
                 ReportUnconstructibleError(diagnosticsBuilder, member, (INamedTypeSymbol)resultType!,
-                    isAsync && rateLimit is not null,
-                    isAsync && cbConfig is not null && !fallbackConfigured,
+                    reportsRejections && rateLimit is not null,
+                    reportsRejections && cbConfig is not null && !fallbackConfigured,
                     retry?.NonThrowing == true);
+            }
 
             var paramList = string.Join(", ", member.Parameters.Select(static p =>
                 $"{p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)} {p.Name}"));
@@ -335,22 +340,25 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
     private static ITypeSymbol? UnwrapAsyncType(ITypeSymbol returnType) =>
         returnType is INamedTypeSymbol { TypeArguments.Length: 1 } named ? named.TypeArguments[0] : null;
 
-    // Only the Result types of ZeroAlloc.Results: Result, Result<T> and Result<T, E>.
+    // Only the Result types of ZeroAlloc.Results: Result, Result<T>, Result<T, E> and UnitResult<E>.
     private static ResultKind ClassifyResult(ITypeSymbol? type)
     {
-        if (type is not INamedTypeSymbol { Name: "Result" } named
+        if (type is not INamedTypeSymbol named
             || !string.Equals(named.ContainingNamespace?.ToDisplayString(), "ZeroAlloc.Results", StringComparison.Ordinal))
             return ResultKind.None;
 
-        return named.TypeArguments.Length switch
+        return (named.Name, named.TypeArguments.Length) switch
         {
-            0 or 1 => ResultKind.StringError,
-            2 => string.Equals(named.TypeArguments[1].ToDisplayString(), "ZeroAlloc.Resilience.ResilienceError", StringComparison.Ordinal)
+            ("Result", 0 or 1) => ResultKind.StringError,
+            ("Result", 2) or ("UnitResult", 1) => IsResilienceError(named.TypeArguments[named.TypeArguments.Length - 1])
                 ? ResultKind.ResilienceError
                 : ResultKind.ForeignError,
             _ => ResultKind.None,
         };
     }
+
+    private static bool IsResilienceError(ITypeSymbol type) =>
+        string.Equals(type.ToDisplayString(), "ZeroAlloc.Resilience.ResilienceError", StringComparison.Ordinal);
 
     private static void ReportUnconstructibleError(
         ImmutableArray<Diagnostic>.Builder diagnostics,
@@ -362,7 +370,8 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
     {
         var location = method.Locations.FirstOrDefault();
         var resultDisplay = resultType.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
-        var errorDisplay = resultType.TypeArguments[1].ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
+        var errorDisplay = resultType.TypeArguments[resultType.TypeArguments.Length - 1]
+            .ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
 
         if (rateLimitRejects)
             diagnostics.Add(Diagnostic.Create(ResilienceDiagnostics.UnconstructibleResultError, location,

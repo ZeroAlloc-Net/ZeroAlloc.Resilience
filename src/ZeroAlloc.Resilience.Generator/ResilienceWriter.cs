@@ -199,9 +199,9 @@ internal static class ResilienceWriter
         if (method.Retry!.NonThrowing && method.ResultKind != ResultKind.ResilienceError)
         {
             // NonThrowing=true but type extraction failed — emit a hard compile error instead of silently generating throwing code
-            sb.AppendLine($"#error ZR: [Retry(NonThrowing = true)] requires the method return type to be Result<T, ResilienceError> (on method '{method.Name}')");
+            sb.AppendLine($"#error ZR: [Retry(NonThrowing = true)] requires the method return type to be Result<T, ResilienceError> or UnitResult<ResilienceError> (on method '{method.Name}')");
         }
-        else if (method.ReturnsFailureOnExhaustion)
+        else if (method.ReturnsFailureResult)
         {
             // Result return types get a failure of their own type instead of an exception.
             sb.AppendLine($"        return {FailureExpression(method, "\"Retry\"", "__lastEx?.Message ?? \"All retry attempts failed.\"", "__lastEx")};");
@@ -271,8 +271,8 @@ internal static class ResilienceWriter
         }
     }
 
-    // A failure of the method's own Result type. Only valid when ReturnsFailureResult or
-    // ReturnsFailureOnExhaustion holds; a foreign error type never reaches here.
+    // A failure of the method's own Result type. Only valid when ReturnsFailureResult holds; a
+    // foreign error type never reaches here.
     private static string FailureExpression(MethodModel method, string policyExpr, string messageExpr, string? exceptionExpr)
     {
         if (method.ResultKind == ResultKind.ResilienceError)

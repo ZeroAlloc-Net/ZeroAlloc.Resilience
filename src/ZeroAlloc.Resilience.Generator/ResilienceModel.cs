@@ -43,15 +43,10 @@ internal sealed record MethodModel(
     CircuitBreakerConfig? CircuitBreaker
 )
 {
-    // Async methods returning a Result whose failure the generator can build return that failure
-    // from every policy failure site instead of throwing.
+    // Methods returning a Result whose failure the generator can build, sync or async, return
+    // that failure from every policy failure site instead of throwing.
     public bool ReturnsFailureResult =>
-        IsAsync && ResultKind is ResultKind.StringError or ResultKind.ResilienceError;
-
-    // [Retry(NonThrowing = true)] also covers synchronous Result<T, ResilienceError> methods,
-    // but only on retry exhaustion.
-    public bool ReturnsFailureOnExhaustion =>
-        ReturnsFailureResult || (Retry?.NonThrowing == true && ResultKind == ResultKind.ResilienceError);
+        ResultKind is ResultKind.StringError or ResultKind.ResilienceError;
 }
 
 // The ZeroAlloc.Results return shapes the generator distinguishes.
@@ -61,10 +56,10 @@ internal enum ResultKind
     None,
     // Result or Result<T>: the error is a string, built with Failure(string).
     StringError,
-    // Result<T, ResilienceError>: built with Failure(new ResilienceError(...)).
+    // Result<T, ResilienceError> or UnitResult<ResilienceError>: built with Failure(new ResilienceError(...)).
     ResilienceError,
-    // Result<T, E> for any other E: the generator cannot build an E, so it only passes
-    // Results returned by the inner call through.
+    // Result<T, E> or UnitResult<E> for any other E: the generator cannot build an E, so it only
+    // passes Results returned by the inner call through.
     ForeignError,
 }
 
