@@ -24,6 +24,10 @@ public sealed class RetryPolicy
     /// <param name="backoffMs">Base backoff milliseconds (exponential per attempt).</param>
     /// <param name="jitter">Add random jitter to prevent thundering herd.</param>
     /// <param name="perAttemptTimeoutMs">Per-attempt cancellation timeout. 0 = disabled.</param>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="maxAttempts"/> is less than 1, or <paramref name="backoffMs"/> or
+    /// <paramref name="perAttemptTimeoutMs"/> is negative.
+    /// </exception>
     public RetryPolicy(int maxAttempts, int backoffMs, bool jitter, int perAttemptTimeoutMs)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(maxAttempts, 1);

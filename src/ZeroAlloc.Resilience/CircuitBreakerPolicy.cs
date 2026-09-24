@@ -20,6 +20,10 @@ public sealed class CircuitBreakerPolicy : IDisposable
     /// <param name="maxFailures">Consecutive failures that trip Closed → Open.</param>
     /// <param name="resetMs">Milliseconds before Open → HalfOpen probe.</param>
     /// <param name="halfOpenProbes">Successes required to close from HalfOpen.</param>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="maxFailures"/> or <paramref name="halfOpenProbes"/> is less than 1, or
+    /// <paramref name="resetMs"/> is negative.
+    /// </exception>
     public CircuitBreakerPolicy(int maxFailures, int resetMs, int halfOpenProbes)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(maxFailures, 1);

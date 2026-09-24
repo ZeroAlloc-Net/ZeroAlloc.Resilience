@@ -12,6 +12,7 @@ public sealed class TimeoutPolicy
     public int TotalMs { get; }
 
     /// <param name="totalMs">Total operation timeout in milliseconds.</param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="totalMs"/> is zero or negative.</exception>
     public TimeoutPolicy(int totalMs)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(totalMs);

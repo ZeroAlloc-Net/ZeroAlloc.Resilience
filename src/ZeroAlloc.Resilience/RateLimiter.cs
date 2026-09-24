@@ -21,6 +21,9 @@ public sealed class RateLimiter
     /// <param name="maxPerSecond">Tokens added per second.</param>
     /// <param name="burstSize">Initial and maximum token count.</param>
     /// <param name="scope">Whether this limiter is shared or per-instance.</param>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="maxPerSecond"/> or <paramref name="burstSize"/> is negative.
+    /// </exception>
     public RateLimiter(int maxPerSecond, int burstSize, RateLimitScope scope)
         : this(maxPerSecond, burstSize, scope, TimeProvider.System)
     {
@@ -33,6 +36,9 @@ public sealed class RateLimiter
     /// Clock used to measure refill intervals. Pass a controlled provider to make refill
     /// behaviour deterministic; the default reads the system clock.
     /// </param>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="maxPerSecond"/> or <paramref name="burstSize"/> is negative.
+    /// </exception>
     /// <remarks>
     /// Refill is measured with <see cref="TimeProvider.GetTimestamp"/> rather than a wall clock,
     /// so it is monotonic and unaffected by system time changes.
