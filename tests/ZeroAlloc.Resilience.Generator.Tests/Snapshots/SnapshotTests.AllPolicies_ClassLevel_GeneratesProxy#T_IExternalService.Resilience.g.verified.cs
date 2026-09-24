@@ -146,4 +146,20 @@ public static partial class ResilienceServiceCollectionExtensions
             sp.GetRequiredService<TImpl>(), sp.GetRequiredService<ExternalServiceResiliencePolicies>()));
         return services;
     }
+
+    public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddExternalServiceResilience<
+        [global::System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(
+            global::System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicConstructors)]
+        TImpl>(
+        this global::Microsoft.Extensions.DependencyInjection.IServiceCollection services,
+        global::System.Action<global::System.IServiceProvider, ExternalServiceResiliencePolicies> configure)
+        where TImpl : class, global::T.IExternalService
+    {
+        global::System.ArgumentNullException.ThrowIfNull(configure);
+        services.AddTransient<TImpl>();
+        services.AddExternalServiceResiliencePolicies(configure);
+        services.AddTransient<global::T.IExternalService>(sp => new IExternalServiceResilienceProxy(
+            sp.GetRequiredService<TImpl>(), sp.GetRequiredService<ExternalServiceResiliencePolicies>()));
+        return services;
+    }
 }

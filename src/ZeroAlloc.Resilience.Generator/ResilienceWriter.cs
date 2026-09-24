@@ -355,6 +355,8 @@ internal static class ResilienceWriter
         sb.AppendLine();
 
         WriteAddResilience(sb, model, withConfigure: false);
+        sb.AppendLine();
+        WriteAddResilience(sb, model, withConfigure: true);
 
         sb.AppendLine("}");
     }
