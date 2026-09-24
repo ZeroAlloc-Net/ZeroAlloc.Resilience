@@ -279,7 +279,11 @@ internal static class ResilienceWriter
         var rate    = model.ClassRateLimit ?? model.Methods.FirstOrDefault(static m => m.RateLimit is not null)?.RateLimit;
         var cb      = model.ClassCircuitBreaker ?? model.Methods.FirstOrDefault(static m => m.CircuitBreaker is not null)?.CircuitBreaker;
 
-        sb.AppendLine("public static partial class ResilienceServiceCollectionExtensions");
+        // Partial declarations must agree on accessibility, so non-public interfaces get their
+        // own internal class instead of sharing the public ResilienceServiceCollectionExtensions.
+        sb.AppendLine(model.IsPublic
+            ? "public static partial class ResilienceServiceCollectionExtensions"
+            : "internal static partial class InternalResilienceServiceCollectionExtensions");
         sb.AppendLine("{");
         sb.AppendLine($"    public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection Add{model.InterfaceName.TrimStart('I')}Resilience<");
         // IL2091: TImpl flows into AddTransient<T> which requires PublicConstructors.
