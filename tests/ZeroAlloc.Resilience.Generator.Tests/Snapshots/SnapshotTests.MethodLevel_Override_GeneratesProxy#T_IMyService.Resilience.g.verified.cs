@@ -59,8 +59,8 @@ internal sealed class IMyServiceResilienceProxy : global::T.IMyService
             var __ct = __totalCts.Token;
             try
             {
-                var __result = await _inner.PostAsync(data, __ct).ConfigureAwait(false);
-                return __result;
+                await _inner.PostAsync(data, __ct).ConfigureAwait(false);
+                return;
             }
             catch (global::System.Exception __ex)
             {

@@ -31,6 +31,7 @@ internal sealed record MethodModel(
     ResultKind ResultKind,          // shape of the ZeroAlloc.Results type the method returns, if any
     string? ResultTypeFqn,          // e.g. global::ZeroAlloc.Results.Result<string>; null when ResultKind is None
     bool IsAsync,                   // true if ValueTask or Task
+    bool ReturnsValue,              // false for void, ValueTask and Task: the inner call is a statement
     bool HasCancellationToken,
     string? CancellationTokenParamName, // name of the CancellationToken parameter, if any
     string ParameterList,           // "string id, CancellationToken ct"

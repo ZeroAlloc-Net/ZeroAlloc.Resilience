@@ -192,6 +192,7 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
                 ResultKind: resultKind,
                 ResultTypeFqn: resultTypeFqn,
                 IsAsync: isAsync,
+                ReturnsValue: isAsync ? resultType is not null : !member.ReturnsVoid,
                 HasCancellationToken: hasCt,
                 CancellationTokenParamName: ctParamName,
                 ParameterList: paramList,
