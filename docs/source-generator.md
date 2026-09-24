@@ -12,7 +12,7 @@ ZeroAlloc.Resilience uses a Roslyn `IIncrementalGenerator` to emit a proxy class
 
 ## What triggers generation
 
-The generator activates on any `interface` decorated with at least one of `[Retry]`, `[Timeout]`, `[RateLimit]`, or `[CircuitBreaker]`. It reads method signatures, collects effective policies (method-level shadows interface-level), validates fallback methods, and emits one file per annotated interface.
+The generator activates on any `interface` that has at least one of `[Retry]`, `[Timeout]`, `[RateLimit]`, or `[CircuitBreaker]`, either on the interface itself or on one of its methods. Methods without an effective policy are forwarded to the inner service unchanged. It reads method signatures, collects effective policies (method-level shadows interface-level), validates fallback methods, and emits one file per annotated interface.
 
 ---
 

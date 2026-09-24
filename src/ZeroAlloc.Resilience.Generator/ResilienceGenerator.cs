@@ -19,8 +19,7 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
     {
 #pragma warning disable EPS06 // IncrementalValuesProvider is a struct; hidden copies are unavoidable in the incremental pipeline API
         var candidates = context.SyntaxProvider.CreateSyntaxProvider(
-            predicate: static (node, _) =>
-                node is InterfaceDeclarationSyntax { AttributeLists.Count: > 0 },
+            predicate: static (node, _) => IsCandidate(node),
             transform: static (ctx, ct) => TryParse(ctx, ct));
         var filtered = candidates.Where(static m => m is not null);
         var models   = filtered.Select(static (m, _) => m!);
@@ -44,12 +43,32 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
         });
     }
 
+    // Policies may sit on the interface or only on its methods; TryParse does the semantic check.
+    private static bool IsCandidate(SyntaxNode node)
+    {
+        if (node is not InterfaceDeclarationSyntax iface) return false;
+        if (iface.AttributeLists.Count > 0) return true;
+        foreach (var member in iface.Members)
+            if (member is MethodDeclarationSyntax { AttributeLists.Count: > 0 }) return true;
+        return false;
+    }
+
     private static ResilienceModel? TryParse(GeneratorSyntaxContext ctx, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
 
         if (ctx.SemanticModel.GetDeclaredSymbol(ctx.Node, ct) is not INamedTypeSymbol iface)
             return null;
+
+        // Several parts of a partial interface can pass the predicate; only the first one emits,
+        // otherwise every part adds a source with the same hint name.
+        foreach (var reference in iface.DeclaringSyntaxReferences)
+        {
+            var declaration = reference.GetSyntax(ct);
+            if (!IsCandidate(declaration)) continue;
+            if (declaration != ctx.Node) return null;
+            break;
+        }
 
         var classRetry          = ParseRetry(GetAttribute(iface, RetryFqn));
         var classTimeout        = ParseTimeout(GetAttribute(iface, TimeoutFqn));
