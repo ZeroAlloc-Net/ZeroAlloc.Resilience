@@ -8,6 +8,11 @@ namespace ZeroAlloc.Resilience;
 /// </summary>
 public sealed class RetryPolicy
 {
+    /// <summary>
+    /// The longest delay GetBackoffMs returns, so the value is always a valid Task.Delay argument.
+    /// </summary>
+    public const int MaxBackoffMs = int.MaxValue - 1;
+
     /// <summary>Total number of attempts (initial + retries).</summary>
     public int MaxAttempts { get; }
 
@@ -39,13 +44,19 @@ public sealed class RetryPolicy
         PerAttemptTimeoutMs = perAttemptTimeoutMs;
     }
 
-    /// <summary>Computes the backoff delay for a given attempt index (0-based).</summary>
+    /// <summary>
+    /// Computes the backoff delay for a given attempt index (0-based). The result is capped
+    /// at MaxBackoffMs to prevent overflow with large attempt counts.
+    /// </summary>
     /// <param name="attempt">Zero-based attempt index (0 = first retry delay).</param>
     public int GetBackoffMs(int attempt)
     {
-        var ms = BackoffMs * (1 << attempt); // exponential: 200, 400, 800…
+        // Exponential: 200, 400, 800... Computed in long and capped, so a large attempt count can
+        // never overflow into a negative or infinite delay.
+        var exponent = Math.Min(Math.Max(attempt, 0), 30);
+        var ms = Math.Min((long)BackoffMs << exponent, MaxBackoffMs);
         if (Jitter)
-            ms += Random.Shared.Next(0, Math.Max(1, ms / 2));
-        return ms;
+            ms += Random.Shared.NextInt64(0, Math.Max(1, ms / 2));
+        return (int)Math.Min(ms, MaxBackoffMs);
     }
 }

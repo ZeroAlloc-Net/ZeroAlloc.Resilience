@@ -30,4 +30,58 @@ public class RetryPolicyTests
         policy.Jitter.Should().BeTrue();
         policy.PerAttemptTimeoutMs.Should().Be(1000);
     }
+
+    [Fact]
+    public void GetBackoffMs_SmallAttempts_Unchanged()
+    {
+        var policy = new RetryPolicy(3, 200, false, 0);
+        policy.GetBackoffMs(0).Should().Be(200);  // 200 * 2^0
+        policy.GetBackoffMs(1).Should().Be(400);  // 200 * 2^1
+        policy.GetBackoffMs(2).Should().Be(800);  // 200 * 2^2
+    }
+
+    [Theory]
+    [InlineData(24)]
+    [InlineData(30)]
+    [InlineData(31)]
+    [InlineData(32)]
+    [InlineData(40)]
+    [InlineData(1000)]
+    public void GetBackoffMs_LargeAttempts_NeverOverflows(int attempt)
+    {
+        var policy = new RetryPolicy(1001, 200, false, 0);
+        var result = policy.GetBackoffMs(attempt);
+
+        result.Should().BeGreaterThanOrEqualTo(0);
+        result.Should().BeLessThanOrEqualTo(RetryPolicy.MaxBackoffMs);
+        result.Should().NotBe(-1);
+
+        // For attempt >= 40, should equal MaxBackoffMs
+        if (attempt >= 40)
+            result.Should().Be(RetryPolicy.MaxBackoffMs);
+    }
+
+    [Theory]
+    [InlineData(24)]
+    [InlineData(30)]
+    [InlineData(31)]
+    [InlineData(32)]
+    [InlineData(40)]
+    [InlineData(1000)]
+    public void GetBackoffMs_LargeAttemptsWithJitter_NeverOverflows(int attempt)
+    {
+        var policy = new RetryPolicy(1001, 200, true, 0);
+        var result = policy.GetBackoffMs(attempt);
+
+        result.Should().BeGreaterThanOrEqualTo(0);
+        result.Should().BeLessThanOrEqualTo(RetryPolicy.MaxBackoffMs);
+        result.Should().NotBe(-1);
+    }
+
+    [Fact]
+    public void GetBackoffMs_ZeroBackoffMs_ReturnsZero()
+    {
+        var policy = new RetryPolicy(1001, 0, false, 0);
+        policy.GetBackoffMs(1000).Should().Be(0);
+    }
 }
