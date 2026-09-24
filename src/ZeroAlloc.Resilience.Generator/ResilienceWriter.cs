@@ -99,7 +99,14 @@ internal static class ResilienceWriter
             {
                 var awaitFb = method.IsAsync ? "await " : "";
                 var configFb = method.IsAsync ? ".ConfigureAwait(false)" : "";
-                sb.AppendLine($"            return {awaitFb}_inner.{method.FallbackMethodName}({method.ArgumentList}){configFb};");
+                var fallbackCall = $"{awaitFb}_inner.{method.FallbackMethodName}({method.ArgumentList}){configFb}";
+                if (method.ReturnsValue)
+                    sb.AppendLine($"            return {fallbackCall};");
+                else
+                {
+                    sb.AppendLine($"            {fallbackCall};");
+                    sb.AppendLine("            return;");
+                }
             }
             else if (method.ReturnsFailureResult)
                 sb.AppendLine($"            return {FailureExpression(method, "\"CircuitBreaker\"", "\"Circuit breaker is open.\"", exceptionExpr: null)};");
@@ -165,10 +172,10 @@ internal static class ResilienceWriter
         sb.AppendLine("            try");
         sb.AppendLine("            {");
         var callArgs = method.HasCancellationToken ? method.ArgumentListWithToken : method.ArgumentList;
-        sb.AppendLine($"                var __result = {awaitKw}_inner.{method.Name}({callArgs}){configKw};");
+        sb.AppendLine($"                {CaptureCall(method, $"{awaitKw}_inner.{method.Name}({callArgs}){configKw}")}");
         if (method.CircuitBreaker is not null)
             sb.AppendLine("                _circuitBreaker.OnSuccess();");
-        sb.AppendLine("                return __result;");
+        sb.AppendLine($"                {ReturnCaptured(method)}");
         sb.AppendLine("            }");
         sb.AppendLine("            catch (global::System.Exception __ex)");
         sb.AppendLine("            {");
@@ -238,10 +245,10 @@ internal static class ResilienceWriter
             sb.AppendLine("        global::System.Exception __lastEx;");
             sb.AppendLine("        try");
             sb.AppendLine("        {");
-            sb.AppendLine($"            var __result = {awaitKw}_inner.{method.Name}({callArgs}){configKw};");
+            sb.AppendLine($"            {CaptureCall(method, $"{awaitKw}_inner.{method.Name}({callArgs}){configKw}")}");
             if (method.CircuitBreaker is not null)
                 sb.AppendLine("            _circuitBreaker.OnSuccess();");
-            sb.AppendLine("            return __result;");
+            sb.AppendLine($"            {ReturnCaptured(method)}");
             sb.AppendLine("        }");
             sb.AppendLine("        catch (global::System.Exception __ex)");
             sb.AppendLine("        {");
@@ -255,9 +262,9 @@ internal static class ResilienceWriter
         {
             sb.AppendLine("        try");
             sb.AppendLine("        {");
-            sb.AppendLine($"            var __result = {awaitKw}_inner.{method.Name}({callArgs}){configKw};");
+            sb.AppendLine($"            {CaptureCall(method, $"{awaitKw}_inner.{method.Name}({callArgs}){configKw}")}");
             sb.AppendLine("            _circuitBreaker.OnSuccess();");
-            sb.AppendLine("            return __result;");
+            sb.AppendLine($"            {ReturnCaptured(method)}");
             sb.AppendLine("        }");
             sb.AppendLine("        catch (global::System.Exception __ex)");
             sb.AppendLine("        {");
@@ -267,9 +274,18 @@ internal static class ResilienceWriter
         }
         else
         {
-            sb.AppendLine($"        return {awaitKw}_inner.{method.Name}({callArgs}){configKw};");
+            var call = $"{awaitKw}_inner.{method.Name}({callArgs}){configKw}";
+            sb.AppendLine(method.ReturnsValue ? $"        return {call};" : $"        {call};");
         }
     }
+
+    // The inner call as a statement: captured in __result when the method returns a value, a bare
+    // statement for void, ValueTask and Task.
+    private static string CaptureCall(MethodModel method, string call) =>
+        method.ReturnsValue ? $"var __result = {call};" : $"{call};";
+
+    private static string ReturnCaptured(MethodModel method) =>
+        method.ReturnsValue ? "return __result;" : "return;";
 
     // A failure of the method's own Result type. Only valid when ReturnsFailureResult holds; a
     // foreign error type never reaches here.
