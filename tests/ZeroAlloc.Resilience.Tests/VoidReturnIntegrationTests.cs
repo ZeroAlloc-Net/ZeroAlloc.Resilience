@@ -96,7 +96,7 @@ public class VoidReturnIntegrationTests
     public void Void_OpenCircuit_CallsFallback()
     {
         var inner = new FlakyVoidImpl { FailTimes = 10 };
-        var proxy = new IVoidCircuitServiceResilienceProxy(inner, new VoidCircuitServiceResiliencePolicies { CircuitBreaker = new CircuitBreakerPolicy(1, 60_000, 1) });
+        var proxy = new IVoidCircuitServiceResilienceProxy(inner, new VoidCircuitServiceResiliencePolicies { FireCircuitBreaker = new CircuitBreakerPolicy(1, 60_000, 1) });
 
         var first = () => proxy.Fire();
         first.Should().Throw<InvalidOperationException>();

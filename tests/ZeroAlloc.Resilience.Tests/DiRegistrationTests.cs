@@ -154,4 +154,19 @@ public class DiRegistrationTests
 
         act.Should().Throw<ArgumentNullException>().WithParameterName("configure");
     }
+
+    [Fact]
+    public async Task Configure_RunsOnceAcrossResolutions()
+    {
+        var calls = 0;
+        var services = new ServiceCollection();
+        services.AddDiTestServiceResilience<DiTestImpl>((_, _) => calls++);
+        await using var sp = services.BuildServiceProvider();
+
+        sp.GetRequiredService<IDiTestService>();
+        sp.GetRequiredService<IDiTestService>();
+        sp.GetRequiredService<IDiTestService>();
+
+        calls.Should().Be(1);
+    }
 }

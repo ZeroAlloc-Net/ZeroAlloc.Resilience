@@ -41,8 +41,17 @@ public interface IPolicySetInstanceLimited
     string Get();
 }
 
+[RateLimit(MaxPerSecond = 0, BurstSize = 1)]
+public interface IPolicySetMethodRateLimited
+{
+    string Read();
+
+    [RateLimit(MaxPerSecond = 0, BurstSize = 1)]
+    string Write();
+}
+
 public sealed class PolicySetImpl
-    : IPolicySetRetryService, IPolicySetTimeoutService, IPolicySetPerAttemptService, IPolicySetCircuitService, IPolicySetInstanceLimited
+    : IPolicySetRetryService, IPolicySetTimeoutService, IPolicySetPerAttemptService, IPolicySetCircuitService, IPolicySetInstanceLimited, IPolicySetMethodRateLimited
 {
     public int Calls { get; private set; }
     public int FailTimes { get; init; }
@@ -59,6 +68,8 @@ public sealed class PolicySetImpl
     public ValueTask<string> ReadAsync(CancellationToken ct) => ValueTask.FromResult("read");
     public ValueTask<string> WriteAsync(CancellationToken ct) => throw new InvalidOperationException("write");
     public string Get() => "ok";
+    public string Read() => "read";
+    public string Write() => "write";
 }
 
 public class PolicySetIntegrationTests
@@ -143,6 +154,18 @@ public class PolicySetIntegrationTests
         firstAgain.Should().Throw<ResilienceException>();
 
         second.Get().Should().Be("ok");
+    }
+
+    [Fact]
+    public void MethodLevelRateLimiter_HasItsOwnBudget()
+    {
+        var proxy = new IPolicySetMethodRateLimitedResilienceProxy(new PolicySetImpl(), new PolicySetMethodRateLimitedResiliencePolicies());
+
+        proxy.Write().Should().Be("write");
+        var writeAgain = () => proxy.Write();
+        writeAgain.Should().Throw<ResilienceException>();
+
+        proxy.Read().Should().Be("read");
     }
 
     [Fact]

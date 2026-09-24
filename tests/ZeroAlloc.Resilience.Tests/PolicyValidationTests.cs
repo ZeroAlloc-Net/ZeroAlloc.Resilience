@@ -1,4 +1,5 @@
 using System;
+using Microsoft.Extensions.Time.Testing;
 
 namespace ZeroAlloc.Resilience.Tests;
 
@@ -94,5 +95,20 @@ public class PolicyValidationTests
         own.Scope.Should().Be(RateLimitScope.Instance);
         own.TryAcquire().Should().BeTrue();
         own.TryAcquire().Should().BeFalse();
+    }
+
+    [Fact]
+    public void ForProxyInstance_Instance_KeepsTheTimeProvider()
+    {
+        var time = new FakeTimeProvider();
+        var template = new RateLimiter(1, 1, RateLimitScope.Instance, time);
+
+        var own = template.ForProxyInstance();
+        own.TryAcquire().Should().BeTrue();
+        own.TryAcquire().Should().BeFalse();
+
+        time.Advance(TimeSpan.FromSeconds(1));
+
+        own.TryAcquire().Should().BeTrue();
     }
 }
