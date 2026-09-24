@@ -70,7 +70,7 @@ When all attempts fail, the proxy throws:
 throw new ResilienceException(ResiliencePolicy.Retry, "All retry attempts failed.", lastException);
 ```
 
-`InnerException` is the last exception thrown by the inner method. For `Result<T>` return types, a `Result.Failure(lastException.Message)` is returned instead.
+`InnerException` is the last exception thrown by the inner method. For async `Result` and `Result<T>` return types, a `Failure(lastException.Message)` of that type is returned instead, and `Result<T, ResilienceError>` gets a `ResilienceError` with `PolicyType = "Retry"` and the last exception. A `Result<T, E>` with any other `E` still throws here, because no inner Result exists; a Result the inner call returns is passed through unchanged. See [Result Return Types](../guides/result-return-types.md).
 
 ---
 

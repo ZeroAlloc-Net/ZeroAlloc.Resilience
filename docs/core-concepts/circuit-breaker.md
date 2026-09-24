@@ -116,7 +116,7 @@ If no `Fallback` is configured and the circuit is open:
 throw new ResilienceException(ResiliencePolicy.CircuitBreaker, "Circuit breaker is open.");
 ```
 
-For `Result<T>` return types, `Result.Failure("Circuit breaker is open.")` is returned instead.
+For async `Result` and `Result<T>` return types, a `Failure("Circuit breaker is open.")` of that type is returned instead, and `Result<T, ResilienceError>` gets a `ResilienceError` with `PolicyType = "CircuitBreaker"`. A `Result<T, E>` with any other `E` needs a `Fallback`; see [Result Return Types](../guides/result-return-types.md).
 
 ---
 
