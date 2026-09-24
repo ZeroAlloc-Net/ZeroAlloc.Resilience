@@ -20,10 +20,10 @@ public sealed class RetryAttribute : Attribute
     public int PerAttemptTimeoutMs { get; init; } = 0;
 
     /// <summary>
-    /// When <see langword="true"/>, the generated method returns
-    /// <c>Result&lt;T, ResilienceError&gt;</c> on the failure path instead of throwing
-    /// <see cref="ResilienceException"/>. Existing callers are unaffected because the default
-    /// is <see langword="false"/>.
+    /// When <see langword="true"/>, the method must return <c>Result&lt;T, ResilienceError&gt;</c>
+    /// or <c>UnitResult&lt;ResilienceError&gt;</c>. Methods returning those types already get a
+    /// failure instead of <see cref="ResilienceException"/> without this flag, so it only
+    /// asserts the return type.
     /// </summary>
     public bool NonThrowing { get; init; } = false;
 }

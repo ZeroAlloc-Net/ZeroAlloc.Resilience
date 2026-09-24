@@ -6,18 +6,19 @@ sidebar_position: 3
 
 # Result Return Types
 
-By default, policy failures throw `ResilienceException`. If an async method returns a `ZeroAlloc.Results` type, `ValueTask<...>` or `Task<...>` around `Result`, `Result<T>` or `Result<T, E>`, the generator detects it. Where it can build a failure of that type, it returns the failure instead of throwing.
+By default, policy failures throw `ResilienceException`. If a method returns a `ZeroAlloc.Results` type, `Result`, `Result<T>`, `Result<T, E>` or `UnitResult<E>`, directly or inside `ValueTask<>` or `Task<>`, the generator detects it. Where it can build a failure of that type, it returns the failure instead of throwing. Synchronous and async methods follow the same rules.
 
 What the generator can build depends on the error type:
 
-| Return type, inside `ValueTask<>` or `Task<>` | Error type | Policy failures |
+| Return type | Error type | Policy failures |
 |---|---|---|
 | `Result` | `string` | returned as `Result.Failure(message)` |
 | `Result<T>` | `string` | returned as `Result<T>.Failure(message)` |
 | `Result<T, ResilienceError>` | `ResilienceError` | returned as `Result<T, ResilienceError>.Failure(new ResilienceError(...))` |
-| `Result<T, E>` with any other `E` | your own type | the generator cannot build an `E`: see [Foreign error types](#foreign-error-types) |
+| `UnitResult<ResilienceError>` | `ResilienceError` | returned as `UnitResult<ResilienceError>.Failure(new ResilienceError(...))` |
+| `Result<T, E>` or `UnitResult<E>` with any other `E` | your own type | the generator cannot build an `E`: see [Foreign error types](#foreign-error-types) |
 
-Synchronous methods keep throwing `ResilienceException`. The one exception is `[Retry(NonThrowing = true)]` on a synchronous `Result<T, ResilienceError>`, which returns a failure on retry exhaustion.
+In 1.3.6 and earlier, synchronous methods threw `ResilienceException` on every policy failure, and `UnitResult<E>` was not recognised at all. If you catch `ResilienceException` around a synchronous Result method, check the returned failure instead.
 
 ---
 
@@ -116,6 +117,8 @@ For `Result<T, E>` with an `E` other than `ResilienceError`, such as `HttpError`
 
 ZR0003 is an error, and no proxy is generated for that interface until it is fixed.
 
+The `[RateLimit]` and `[CircuitBreaker]` rows apply to async `Result<T, E>`. A synchronous `Result<T, E>`, and a `UnitResult<E>` sync or async, keep throwing `ResilienceException` when the call is rejected, because they compiled before ZR0003 existed. `NonThrowing = true` reports ZR0003 for all of them.
+
 ```csharp
 [Retry(MaxAttempts = 4, BackoffMs = 500)]
 [Timeout(Ms = 30_000)]
@@ -132,7 +135,7 @@ Returned failures such as an HTTP 429 are not retried yet, because the retry loo
 
 ## `NonThrowing`
 
-`[Retry(NonThrowing = true)]` requires `Result<T, ResilienceError>`. On async methods it is now redundant, because every `Result<T, ResilienceError>` method already returns failures. On synchronous methods it is the only way to get a failure, on retry exhaustion, instead of an exception.
+`[Retry(NonThrowing = true)]` requires `Result<T, ResilienceError>` or `UnitResult<ResilienceError>`. It is now redundant, because every method returning one of those, sync or async, already returns failures instead of throwing.
 
 ---
 
