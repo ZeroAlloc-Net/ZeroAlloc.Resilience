@@ -83,19 +83,44 @@ public interface IExternalService
 
 ---
 
-## Baked as literals
+## Policy slots
 
-Method-level policy values are baked as integer literals in the generated proxy code. This means each method's retry loop uses its own `MaxAttempts` and `BackoffMs` values directly — not a shared policy object:
+Each method-level attribute gets its own slot on the generated `{Name}ResiliencePolicies` class, named `{Method}{Kind}` — for example `PostAsyncRetry`. If a method has two attributes of different kinds, it gets one slot per kind. If a slot name is already taken by an earlier overload of the same method, the generator numbers it: `PostAsync2Retry`, `PostAsync3Retry`, and so on, in declaration order.
+
+Every slot — interface-level and method-level — is configurable through `configure` (see [DI Registration](di-registration.md)), and defaults to the values on the attribute that produced it.
+
+A method-level `[CircuitBreaker]` or `[RateLimit]` gets its own instance and its own state. It does not share a circuit or a token bucket with the interface-level policy, or with another method's override.
+
+For example, this interface:
 
 ```csharp
-// PostAsync — MaxAttempts = 1, no loop
-var __result = await _inner.PostAsync(data, __ct).ConfigureAwait(false);
+[Retry(MaxAttempts = 3, BackoffMs = 200)]
+[Timeout(Ms = 5000)]
+public interface IMyService
+{
+    ValueTask<string> GetAsync(string id, CancellationToken ct);
 
-// FetchAsync — MaxAttempts = 3
-for (int __attempt = 0; __attempt < 3; __attempt++) { ... }
+    [Retry(MaxAttempts = 1)]
+    [Timeout(Ms = 500)]
+    ValueTask PostAsync(string data, CancellationToken ct);
+}
 ```
 
-This also means that changing policy values in the DI registration does not affect generated code — the values come from the attributes, not the injected objects. The injected `RetryPolicy` object is used for type-keying in DI, not for reading values at call time.
+produces this generated policies class (copied from the generator's own snapshot tests):
+
+```csharp
+public sealed class MyServiceResiliencePolicies
+{
+    public global::ZeroAlloc.Resilience.RetryPolicy Retry { get; set; } = new global::ZeroAlloc.Resilience.RetryPolicy(3, 200, false, 0);
+    public global::ZeroAlloc.Resilience.TimeoutPolicy Timeout { get; set; } = new global::ZeroAlloc.Resilience.TimeoutPolicy(5000);
+    public global::ZeroAlloc.Resilience.RetryPolicy PostAsyncRetry { get; set; } = new global::ZeroAlloc.Resilience.RetryPolicy(1, 200, false, 0);
+    public global::ZeroAlloc.Resilience.TimeoutPolicy PostAsyncTimeout { get; set; } = new global::ZeroAlloc.Resilience.TimeoutPolicy(500);
+}
+```
+
+`GetAsync` reads `Retry` and `Timeout`. `PostAsync` reads its own `PostAsyncRetry` and `PostAsyncTimeout` — changing `Retry` or `Timeout` through `configure` has no effect on `PostAsync`, and changing `PostAsyncRetry` has no effect on `GetAsync`.
+
+Which methods get a retry loop, a timeout, a rate-limit check or a circuit check is decided from the attributes when the generator runs. `configure` tunes the values in a slot; it cannot add or remove a policy from a method.
 
 ---
 

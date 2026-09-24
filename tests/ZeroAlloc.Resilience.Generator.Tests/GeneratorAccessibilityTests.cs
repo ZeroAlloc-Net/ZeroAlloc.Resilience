@@ -85,7 +85,8 @@ public class GeneratorAccessibilityTests
     private static IMethodSymbol FindAddMethod(Compilation compilation, string name)
     {
         var methods = compilation.GetSymbolsWithName(name, SymbolFilter.Member).OfType<IMethodSymbol>().ToArray();
-        methods.Should().ContainSingle();
-        return methods[0];
+        methods.Should().HaveCount(2, "one overload without configure, one with configure");
+        // Return the one without the configure parameter (the first overload)
+        return methods.First(m => m.Parameters.Length == 1);
     }
 }

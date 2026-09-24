@@ -21,6 +21,9 @@ public sealed class RateLimiter
     /// <param name="maxPerSecond">Tokens added per second.</param>
     /// <param name="burstSize">Initial and maximum token count.</param>
     /// <param name="scope">Whether this limiter is shared or per-instance.</param>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="maxPerSecond"/> or <paramref name="burstSize"/> is negative.
+    /// </exception>
     public RateLimiter(int maxPerSecond, int burstSize, RateLimitScope scope)
         : this(maxPerSecond, burstSize, scope, TimeProvider.System)
     {
@@ -33,12 +36,17 @@ public sealed class RateLimiter
     /// Clock used to measure refill intervals. Pass a controlled provider to make refill
     /// behaviour deterministic; the default reads the system clock.
     /// </param>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="maxPerSecond"/> or <paramref name="burstSize"/> is negative.
+    /// </exception>
     /// <remarks>
     /// Refill is measured with <see cref="TimeProvider.GetTimestamp"/> rather than a wall clock,
     /// so it is monotonic and unaffected by system time changes.
     /// </remarks>
     public RateLimiter(int maxPerSecond, int burstSize, RateLimitScope scope, TimeProvider timeProvider)
     {
+        ArgumentOutOfRangeException.ThrowIfNegative(maxPerSecond);
+        ArgumentOutOfRangeException.ThrowIfNegative(burstSize);
         _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
         _maxPerSecond = maxPerSecond;
         _burstSize = burstSize;
@@ -59,6 +67,16 @@ public sealed class RateLimiter
                 return true;
         }
     }
+
+    /// <summary>
+    /// The limiter a generated proxy uses: this limiter when <see cref="Scope"/> is
+    /// <see cref="RateLimitScope.Shared"/>, or a new limiter with the same settings and time
+    /// provider when it is <see cref="RateLimitScope.Instance"/>, so each proxy has its own budget.
+    /// </summary>
+    public RateLimiter ForProxyInstance() =>
+        Scope == RateLimitScope.Instance
+            ? new RateLimiter(_maxPerSecond, (int)_burstSize, Scope, _timeProvider)
+            : this;
 
     private void Refill()
     {

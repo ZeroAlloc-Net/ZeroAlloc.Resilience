@@ -63,7 +63,7 @@ public class TimeoutIntegrationTests
         // Proxy has [Timeout(Ms = 100)]; inner takes 500 ms → should be cancelled
         var inner = new SlowImpl(delayMs: 500);
         var timeout = new TimeoutPolicy(totalMs: 100);
-        var proxy = new ISlowServiceResilienceProxy(inner, timeout);
+        var proxy = new ISlowServiceResilienceProxy(inner, new SlowServiceResiliencePolicies { Timeout = timeout });
 
         var act = async () => await proxy.GetAsync("x", CancellationToken.None);
         // Should throw — either OperationCanceledException (from Task.Delay ct) or ResilienceException
@@ -76,7 +76,7 @@ public class TimeoutIntegrationTests
         // Proxy has [Timeout(Ms = 100)]; inner returns instantly
         var inner = new SlowImpl(delayMs: 0);
         var timeout = new TimeoutPolicy(totalMs: 100);
-        var proxy = new ISlowServiceResilienceProxy(inner, timeout);
+        var proxy = new ISlowServiceResilienceProxy(inner, new SlowServiceResiliencePolicies { Timeout = timeout });
 
         var result = await proxy.GetAsync("x", CancellationToken.None);
         result.Should().Be("ok:x");
@@ -90,7 +90,7 @@ public class TimeoutIntegrationTests
         var inner = new AlwaysFailSlowImpl(delayMs: 30);
         var retry = new RetryPolicy(maxAttempts: 5, backoffMs: 1, jitter: false, perAttemptTimeoutMs: 0);
         var timeout = new TimeoutPolicy(totalMs: 80);
-        var proxy = new ISlowRetryServiceResilienceProxy(inner, retry, timeout);
+        var proxy = new ISlowRetryServiceResilienceProxy(inner, new SlowRetryServiceResiliencePolicies { Retry = retry, Timeout = timeout });
 
         var act = async () => await proxy.GetAsync("x", CancellationToken.None);
         await act.Should().ThrowAsync<Exception>();
@@ -102,7 +102,7 @@ public class TimeoutIntegrationTests
         // Each attempt has 50ms timeout; inner takes 200ms → every attempt times out
         var inner = new SlowImpl(delayMs: 200);
         var retry = new RetryPolicy(maxAttempts: 3, backoffMs: 1, jitter: false, perAttemptTimeoutMs: 50);
-        var proxy = new IPerAttemptTimeoutServiceResilienceProxy(inner, retry);
+        var proxy = new IPerAttemptTimeoutServiceResilienceProxy(inner, new PerAttemptTimeoutServiceResiliencePolicies { Retry = retry });
 
         var act = async () => await proxy.GetAsync("x", CancellationToken.None);
         await act.Should().ThrowAsync<Exception>();

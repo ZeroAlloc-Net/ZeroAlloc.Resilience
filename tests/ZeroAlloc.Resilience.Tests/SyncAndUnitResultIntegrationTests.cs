@@ -89,7 +89,7 @@ public class SyncAndUnitResultIntegrationTests
     public void SyncResultOfT_ExhaustedRetries_ReturnsFailure()
     {
         var inner = new ThrowingSyncResultImpl();
-        var proxy = new ISyncResultRetryServiceResilienceProxy(inner, Retry3());
+        var proxy = new ISyncResultRetryServiceResilienceProxy(inner, new SyncResultRetryServiceResiliencePolicies { Retry = Retry3() });
 
         var result = proxy.Get("x");
 
@@ -101,7 +101,7 @@ public class SyncAndUnitResultIntegrationTests
     [Fact]
     public void SyncNonGenericResult_ExhaustedRetries_ReturnsFailure()
     {
-        var proxy = new ISyncResultRetryServiceResilienceProxy(new ThrowingSyncResultImpl(), Retry3());
+        var proxy = new ISyncResultRetryServiceResilienceProxy(new ThrowingSyncResultImpl(), new SyncResultRetryServiceResiliencePolicies { Retry = Retry3() });
 
         var result = proxy.Do();
 
@@ -112,7 +112,7 @@ public class SyncAndUnitResultIntegrationTests
     [Fact]
     public void SyncResultOfTResilienceError_ExhaustedRetries_ReturnsResilienceError()
     {
-        var proxy = new ISyncResultRetryServiceResilienceProxy(new ThrowingSyncResultImpl(), Retry3());
+        var proxy = new ISyncResultRetryServiceResilienceProxy(new ThrowingSyncResultImpl(), new SyncResultRetryServiceResiliencePolicies { Retry = Retry3() });
 
         var result = proxy.GetTyped("x");
 
@@ -125,7 +125,7 @@ public class SyncAndUnitResultIntegrationTests
     public void SyncUnitResultOfResilienceError_ExhaustedRetries_ReturnsResilienceError()
     {
         var inner = new ThrowingSyncResultImpl();
-        var proxy = new ISyncResultRetryServiceResilienceProxy(inner, Retry3());
+        var proxy = new ISyncResultRetryServiceResilienceProxy(inner, new SyncResultRetryServiceResiliencePolicies { Retry = Retry3() });
 
         var result = proxy.Run();
 
@@ -138,7 +138,7 @@ public class SyncAndUnitResultIntegrationTests
     [Fact]
     public async Task AsyncUnitResultOfResilienceError_ExhaustedRetries_ReturnsResilienceError()
     {
-        var proxy = new ISyncResultRetryServiceResilienceProxy(new ThrowingSyncResultImpl(), Retry3());
+        var proxy = new ISyncResultRetryServiceResilienceProxy(new ThrowingSyncResultImpl(), new SyncResultRetryServiceResiliencePolicies { Retry = Retry3() });
 
         var result = await proxy.RunAsync(CancellationToken.None);
 
@@ -149,7 +149,7 @@ public class SyncAndUnitResultIntegrationTests
     [Fact]
     public void SyncResultOfT_RateLimitRejection_ReturnsFailure()
     {
-        var proxy = new ISyncResultRateLimitedServiceResilienceProxy(new SucceedingSyncResultImpl(), OnePerSecond());
+        var proxy = new ISyncResultRateLimitedServiceResilienceProxy(new SucceedingSyncResultImpl(), new SyncResultRateLimitedServiceResiliencePolicies { RateLimiter = OnePerSecond() });
 
         proxy.Get("a").IsSuccess.Should().BeTrue();
         var rejected = proxy.Get("b");
@@ -161,7 +161,7 @@ public class SyncAndUnitResultIntegrationTests
     [Fact]
     public void SyncUnitResult_RateLimitRejection_ReturnsResilienceError()
     {
-        var proxy = new ISyncResultRateLimitedServiceResilienceProxy(new SucceedingSyncResultImpl(), OnePerSecond());
+        var proxy = new ISyncResultRateLimitedServiceResilienceProxy(new SucceedingSyncResultImpl(), new SyncResultRateLimitedServiceResiliencePolicies { RateLimiter = OnePerSecond() });
 
         proxy.Run().IsSuccess.Should().BeTrue();
         var rejected = proxy.Run();
@@ -174,7 +174,7 @@ public class SyncAndUnitResultIntegrationTests
     public void SyncResult_SingleCallFailure_ThenOpenCircuit_ReturnFailures()
     {
         var inner = new ThrowingSyncResultImpl();
-        var proxy = new ISyncResultCircuitServiceResilienceProxy(inner, new CircuitBreakerPolicy(1, 60_000, 1));
+        var proxy = new ISyncResultCircuitServiceResilienceProxy(inner, new SyncResultCircuitServiceResiliencePolicies { CircuitBreaker = new CircuitBreakerPolicy(1, 60_000, 1) });
 
         var first = proxy.GetTyped("x");
         var second = proxy.GetTyped("x");
@@ -190,7 +190,7 @@ public class SyncAndUnitResultIntegrationTests
     public async Task ForeignUnitResult_ReturnedFailure_IsPassedThroughUnchanged()
     {
         var inner = new ForeignUnitImpl { Returns = UnitResult<HttpError>.Failure(new HttpError(429)) };
-        var proxy = new IForeignUnitRetryServiceResilienceProxy(inner, Retry3());
+        var proxy = new IForeignUnitRetryServiceResilienceProxy(inner, new ForeignUnitRetryServiceResiliencePolicies { Retry = Retry3() });
 
         var result = await proxy.SendAsync(CancellationToken.None);
 
@@ -201,7 +201,7 @@ public class SyncAndUnitResultIntegrationTests
     [Fact]
     public async Task ForeignUnitResult_EveryAttemptThrows_ThrowsResilienceException()
     {
-        var proxy = new IForeignUnitRetryServiceResilienceProxy(new ForeignUnitImpl { ThrowTimes = 10 }, Retry3());
+        var proxy = new IForeignUnitRetryServiceResilienceProxy(new ForeignUnitImpl { ThrowTimes = 10 }, new ForeignUnitRetryServiceResiliencePolicies { Retry = Retry3() });
 
         var act = async () => await proxy.SendAsync(CancellationToken.None);
 
@@ -212,7 +212,7 @@ public class SyncAndUnitResultIntegrationTests
     public async Task ForeignError_RateLimitRejection_KeepsThrowing()
     {
         var proxy = new IForeignUnitRateLimitedServiceResilienceProxy(
-            new ForeignUnitImpl { Returns = UnitResult<HttpError>.Success() }, OnePerSecond());
+            new ForeignUnitImpl { Returns = UnitResult<HttpError>.Success() }, new ForeignUnitRateLimitedServiceResiliencePolicies { RateLimiter = OnePerSecond() });
 
         (await proxy.SendAsync(CancellationToken.None)).IsSuccess.Should().BeTrue();
         var asyncAct = async () => await proxy.SendAsync(CancellationToken.None);

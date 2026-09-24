@@ -15,6 +15,12 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
     private const string RateLimitFqn      = "ZeroAlloc.Resilience.RateLimitAttribute";
     private const string CircuitBreakerFqn = "ZeroAlloc.Resilience.CircuitBreakerAttribute";
 
+    // "IJevApi" -> "JevApi", "IInvoiceApi" -> "InvoiceApi", "Item" -> "Item", "I" -> "I"
+    internal static string ServiceName(string interfaceName) =>
+        interfaceName.Length > 1 && interfaceName[0] == 'I' && char.IsUpper(interfaceName[1])
+            ? interfaceName.Substring(1)
+            : interfaceName;
+
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
 #pragma warning disable EPS06 // IncrementalValuesProvider is a struct; hidden copies are unavoidable in the incremental pipeline API
@@ -96,15 +102,27 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
         var diagnosticsBuilder = ImmutableArray.CreateBuilder<Diagnostic>();
         var methodsBuilder     = ImmutableArray.CreateBuilder<MethodModel>();
 
+        var slots = new PolicySlotBuilder();
+        var classRetrySlot  = classRetry is null ? null : slots.AddInterfaceSlot(PolicyKind.Retry, PolicySlotBuilder.Default(classRetry));
+        var classTimeoutSlot = classTimeout is null ? null : slots.AddInterfaceSlot(PolicyKind.Timeout, PolicySlotBuilder.Default(classTimeout));
+        var classRateSlot   = classRateLimit is null ? null : slots.AddInterfaceSlot(PolicyKind.RateLimiter, PolicySlotBuilder.Default(classRateLimit));
+        var classCbSlot     = classCircuitBreaker is null ? null : slots.AddInterfaceSlot(PolicyKind.CircuitBreaker, PolicySlotBuilder.Default(classCircuitBreaker));
+
         foreach (var member in iface.GetMembers().OfType<IMethodSymbol>())
         {
             if (member.MethodKind != MethodKind.Ordinary) continue;
 
+            var declarationIndex = slots.NextDeclarationIndex(member.Name);
+
             // Effective config: method-level ?? class-level
-            var retry     = ParseRetry(GetAttribute(member, RetryFqn)) ?? classRetry;
-            var timeout   = ParseTimeout(GetAttribute(member, TimeoutFqn)) ?? classTimeout;
-            var rateLimit = ParseRateLimit(GetAttribute(member, RateLimitFqn)) ?? classRateLimit;
-            var cbConfig  = ParseCircuitBreaker(GetAttribute(member, CircuitBreakerFqn)) ?? classCircuitBreaker;
+            var ownRetry     = ParseRetry(GetAttribute(member, RetryFqn));
+            var ownTimeout   = ParseTimeout(GetAttribute(member, TimeoutFqn));
+            var ownRateLimit = ParseRateLimit(GetAttribute(member, RateLimitFqn));
+            var ownCb        = ParseCircuitBreaker(GetAttribute(member, CircuitBreakerFqn));
+            var retry     = ownRetry ?? classRetry;
+            var timeout   = ownTimeout ?? classTimeout;
+            var rateLimit = ownRateLimit ?? classRateLimit;
+            var cbConfig  = ownCb ?? classCircuitBreaker;
 
             if (retry is null && timeout is null && rateLimit is null && cbConfig is null)
                 continue; // no policy on this method
@@ -186,6 +204,15 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
                 string.Equals(p.Type.ToDisplayString(), "System.Threading.CancellationToken", StringComparison.Ordinal)
                     ? "__ct" : p.Name));
 
+            var retrySlot = ownRetry is null ? classRetrySlot
+                : slots.AddMethodSlot(member.Name, declarationIndex, PolicyKind.Retry, PolicySlotBuilder.Default(ownRetry));
+            var timeoutSlot = ownTimeout is null ? classTimeoutSlot
+                : slots.AddMethodSlot(member.Name, declarationIndex, PolicyKind.Timeout, PolicySlotBuilder.Default(ownTimeout));
+            var rateSlot = ownRateLimit is null ? classRateSlot
+                : slots.AddMethodSlot(member.Name, declarationIndex, PolicyKind.RateLimiter, PolicySlotBuilder.Default(ownRateLimit));
+            var cbSlot = ownCb is null ? classCbSlot
+                : slots.AddMethodSlot(member.Name, declarationIndex, PolicyKind.CircuitBreaker, PolicySlotBuilder.Default(ownCb));
+
             methodsBuilder.Add(new MethodModel(
                 Name: member.Name,
                 ReturnTypeFqn: returnTypeFqn,
@@ -202,7 +229,11 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
                 Retry: retry,
                 Timeout: timeout,
                 RateLimit: rateLimit,
-                CircuitBreaker: cbConfig));
+                CircuitBreaker: cbConfig,
+                RetrySlot: retrySlot,
+                TimeoutSlot: timeoutSlot,
+                RateLimiterSlot: rateSlot,
+                CircuitBreakerSlot: cbSlot));
         }
 
         if (methodsBuilder.Count == 0 && diagnosticsBuilder.Count == 0)
@@ -239,6 +270,8 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
             InterfaceName: iface.Name,
             InterfaceFqn: interfaceFqn,
             IsPublic: IsEffectivelyPublic(iface),
+            PoliciesClassName: ServiceName(iface.Name) + "ResiliencePolicies",
+            Slots: slots.ToImmutable(),
             ClassRetry: classRetry,
             ClassTimeout: classTimeout,
             ClassRateLimit: classRateLimit,

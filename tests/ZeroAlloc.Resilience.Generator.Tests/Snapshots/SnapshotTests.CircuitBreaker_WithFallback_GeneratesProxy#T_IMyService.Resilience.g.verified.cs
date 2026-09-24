@@ -9,15 +9,22 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace T;
 
+public sealed class MyServiceResiliencePolicies
+{
+    public global::ZeroAlloc.Resilience.CircuitBreakerPolicy CircuitBreaker { get; set; } = new global::ZeroAlloc.Resilience.CircuitBreakerPolicy(3, 500, 1);
+}
+
 internal sealed class IMyServiceResilienceProxy : global::T.IMyService
 {
     private readonly global::T.IMyService _inner;
     private readonly global::ZeroAlloc.Resilience.CircuitBreakerPolicy _circuitBreaker;
 
-    public IMyServiceResilienceProxy(global::T.IMyService inner, global::ZeroAlloc.Resilience.CircuitBreakerPolicy circuitBreaker)
+    public IMyServiceResilienceProxy(global::T.IMyService inner, MyServiceResiliencePolicies policies)
     {
+        global::System.ArgumentNullException.ThrowIfNull(inner);
+        global::System.ArgumentNullException.ThrowIfNull(policies);
         _inner = inner;
-        _circuitBreaker = circuitBreaker;
+        _circuitBreaker = (policies.CircuitBreaker ?? throw new global::System.ArgumentException("MyServiceResiliencePolicies.CircuitBreaker is null.", nameof(policies)));
     }
 
     public async global::System.Threading.Tasks.ValueTask<string> FetchAsync(string id, global::System.Threading.CancellationToken ct)
@@ -64,6 +71,19 @@ internal sealed class IMyServiceResilienceProxy : global::T.IMyService
 
 public static partial class ResilienceServiceCollectionExtensions
 {
+    public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddMyServiceResiliencePolicies(
+        this global::Microsoft.Extensions.DependencyInjection.IServiceCollection services,
+        global::System.Action<global::System.IServiceProvider, MyServiceResiliencePolicies>? configure = null)
+    {
+        global::Microsoft.Extensions.DependencyInjection.Extensions.ServiceCollectionDescriptorExtensions.TryAddSingleton<MyServiceResiliencePolicies>(services, sp =>
+        {
+            var policies = new MyServiceResiliencePolicies();
+            configure?.Invoke(sp, policies);
+            return policies;
+        });
+        return services;
+    }
+
     public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddMyServiceResilience<
         [global::System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(
             global::System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicConstructors)]
@@ -72,8 +92,25 @@ public static partial class ResilienceServiceCollectionExtensions
         where TImpl : class, global::T.IMyService
     {
         services.AddTransient<TImpl>();
-        services.AddSingleton(new global::ZeroAlloc.Resilience.CircuitBreakerPolicy(3, 500, 1));
-        services.AddTransient<global::T.IMyService>(sp => new IMyServiceResilienceProxy(sp.GetRequiredService<TImpl>(), sp.GetRequiredService<global::ZeroAlloc.Resilience.CircuitBreakerPolicy>()));
+        services.AddMyServiceResiliencePolicies();
+        services.AddTransient<global::T.IMyService>(sp => new IMyServiceResilienceProxy(
+            sp.GetRequiredService<TImpl>(), sp.GetRequiredService<MyServiceResiliencePolicies>()));
+        return services;
+    }
+
+    public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddMyServiceResilience<
+        [global::System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(
+            global::System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicConstructors)]
+        TImpl>(
+        this global::Microsoft.Extensions.DependencyInjection.IServiceCollection services,
+        global::System.Action<global::System.IServiceProvider, MyServiceResiliencePolicies> configure)
+        where TImpl : class, global::T.IMyService
+    {
+        global::System.ArgumentNullException.ThrowIfNull(configure);
+        services.AddTransient<TImpl>();
+        services.AddMyServiceResiliencePolicies(configure);
+        services.AddTransient<global::T.IMyService>(sp => new IMyServiceResilienceProxy(
+            sp.GetRequiredService<TImpl>(), sp.GetRequiredService<MyServiceResiliencePolicies>()));
         return services;
     }
 }

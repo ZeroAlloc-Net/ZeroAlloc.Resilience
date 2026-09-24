@@ -65,23 +65,15 @@ Refill similarly uses CAS on a `lastRefillTick` field — only one thread wins t
 
 ### `RateLimitScope.Shared` (default)
 
-One `RateLimiter` instance is registered as a **singleton** and shared by all proxy instances. This limits the combined call rate across your entire process:
+One `RateLimiter` is shared by every proxy built from the same `{Name}ResiliencePolicies` singleton — one bucket per interface, or one bucket per method when a method carries its own `[RateLimit]` override. The proxy constructor stores the `RateLimiter` from the slot directly.
 
-```csharp
-services.AddSingleton(new RateLimiter(100, 10, RateLimitScope.Shared));
-```
-
-Use this when you want a global cap on calls to the external service regardless of how many service consumers exist.
+Use this when you want a global cap on calls to the external service regardless of how many proxy instances exist.
 
 ### `RateLimitScope.Instance`
 
-The generated DI extension registers a **transient** `RateLimiter`. Each proxy instance gets its own bucket:
+Each proxy instance gets its own bucket. The proxy constructor calls `ForProxyInstance()` on the slot's `RateLimiter`: for `Shared` it returns the same instance, and for `Instance` it returns a new `RateLimiter` with the same `MaxPerSecond`, `BurstSize` and `TimeProvider`, so a custom `TimeProvider` is preserved. This happens once, when the proxy is constructed — resolving the same `IExternalService` from DI twice (transient registration) gives two proxies with two independent buckets, even though both read from the same policies singleton.
 
-```csharp
-services.AddTransient(sp => new RateLimiter(100, 10, RateLimitScope.Instance));
-```
-
-Use this when each consumer (e.g. each HTTP request) should get its own independent quota.
+Use this when each consumer (e.g. each HTTP request, if the proxy is resolved per request) should get its own independent quota.
 
 ---
 

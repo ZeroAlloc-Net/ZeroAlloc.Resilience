@@ -50,7 +50,7 @@ public class VoidReturnIntegrationTests
     public async Task ValueTask_RetriesUntilSuccess()
     {
         var inner = new FlakyVoidImpl { FailTimes = 2 };
-        var proxy = new IVoidRetryServiceResilienceProxy(inner, Retry3());
+        var proxy = new IVoidRetryServiceResilienceProxy(inner, new VoidRetryServiceResiliencePolicies { Retry = Retry3() });
 
         await proxy.PostAsync(CancellationToken.None);
 
@@ -60,7 +60,7 @@ public class VoidReturnIntegrationTests
     [Fact]
     public async Task Task_ExhaustedRetries_ThrowsResilienceException()
     {
-        var proxy = new IVoidRetryServiceResilienceProxy(new FlakyVoidImpl { FailTimes = 10 }, Retry3());
+        var proxy = new IVoidRetryServiceResilienceProxy(new FlakyVoidImpl { FailTimes = 10 }, new VoidRetryServiceResiliencePolicies { Retry = Retry3() });
 
         var act = () => proxy.SendAsync(CancellationToken.None);
 
@@ -71,7 +71,7 @@ public class VoidReturnIntegrationTests
     public void Void_RetriesUntilSuccess()
     {
         var inner = new FlakyVoidImpl { FailTimes = 1 };
-        var proxy = new IVoidRetryServiceResilienceProxy(inner, Retry3());
+        var proxy = new IVoidRetryServiceResilienceProxy(inner, new VoidRetryServiceResiliencePolicies { Retry = Retry3() });
 
         proxy.Fire();
 
@@ -82,7 +82,7 @@ public class VoidReturnIntegrationTests
     public async Task ValueTask_OpenCircuit_Throws()
     {
         var inner = new FlakyVoidImpl { FailTimes = 10 };
-        var proxy = new IVoidCircuitServiceResilienceProxy(inner, new CircuitBreakerPolicy(1, 60_000, 1));
+        var proxy = new IVoidCircuitServiceResilienceProxy(inner, new VoidCircuitServiceResiliencePolicies { CircuitBreaker = new CircuitBreakerPolicy(1, 60_000, 1) });
 
         var first = async () => await proxy.PostAsync(CancellationToken.None);
         var second = async () => await proxy.PostAsync(CancellationToken.None);
@@ -96,7 +96,7 @@ public class VoidReturnIntegrationTests
     public void Void_OpenCircuit_CallsFallback()
     {
         var inner = new FlakyVoidImpl { FailTimes = 10 };
-        var proxy = new IVoidCircuitServiceResilienceProxy(inner, new CircuitBreakerPolicy(1, 60_000, 1));
+        var proxy = new IVoidCircuitServiceResilienceProxy(inner, new VoidCircuitServiceResiliencePolicies { FireCircuitBreaker = new CircuitBreakerPolicy(1, 60_000, 1) });
 
         var first = () => proxy.Fire();
         first.Should().Throw<InvalidOperationException>();

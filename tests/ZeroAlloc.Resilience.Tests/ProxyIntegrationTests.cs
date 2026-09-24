@@ -98,7 +98,7 @@ public class ProxyIntegrationTests
     {
         var inner = new FlakyImpl { FailTimes = 2 };
         var retry = new RetryPolicy(maxAttempts: 3, backoffMs: 1, jitter: false, perAttemptTimeoutMs: 0);
-        var proxy = new IFlakyServiceResilienceProxy(inner, retry);
+        var proxy = new IFlakyServiceResilienceProxy(inner, new FlakyServiceResiliencePolicies { Retry = retry });
 
         var result = await proxy.GetAsync("x", CancellationToken.None);
         result.Should().Be("ok:x");
@@ -109,7 +109,7 @@ public class ProxyIntegrationTests
     {
         var inner = new FlakyImpl { FailTimes = 10 }; // more than MaxAttempts
         var retry = new RetryPolicy(maxAttempts: 3, backoffMs: 1, jitter: false, perAttemptTimeoutMs: 0);
-        var proxy = new IFlakyServiceResilienceProxy(inner, retry);
+        var proxy = new IFlakyServiceResilienceProxy(inner, new FlakyServiceResiliencePolicies { Retry = retry });
 
         var act = async () => await proxy.GetAsync("x", CancellationToken.None);
         await act.Should().ThrowAsync<ResilienceException>()
@@ -121,7 +121,7 @@ public class ProxyIntegrationTests
     {
         var inner = new CircuitImpl { ShouldFail = true };
         var cb = new CircuitBreakerPolicy(maxFailures: 2, resetMs: 1000, halfOpenProbes: 1);
-        var proxy = new ICircuitServiceResilienceProxy(inner, cb);
+        var proxy = new ICircuitServiceResilienceProxy(inner, new CircuitServiceResiliencePolicies { CircuitBreaker = cb });
 
         // Trip the circuit (2 failures needed)
         try { await proxy.GetAsync("x", CancellationToken.None); } catch { }
@@ -137,7 +137,7 @@ public class ProxyIntegrationTests
     {
         var inner = new RateLimitedImpl();
         var limiter = new RateLimiter(maxPerSecond: 2, burstSize: 2, scope: RateLimitScope.Shared);
-        var proxy = new IRateLimitedServiceResilienceProxy(inner, limiter);
+        var proxy = new IRateLimitedServiceResilienceProxy(inner, new RateLimitedServiceResiliencePolicies { RateLimiter = limiter });
 
         // Consume burst
         (await proxy.GetAsync("1", CancellationToken.None)).Should().Be("ok:1");
@@ -163,7 +163,7 @@ public class ProxyIntegrationTests
     {
         var inner = new AlwaysFailImpl();
         var retry = new RetryPolicy(maxAttempts: 3, backoffMs: 1, jitter: false, perAttemptTimeoutMs: 0);
-        var proxy = new INonThrowingServiceResilienceProxy(inner, retry);
+        var proxy = new INonThrowingServiceResilienceProxy(inner, new NonThrowingServiceResiliencePolicies { Retry = retry });
 
         // Should not throw — returns a failed Result instead
         var result = await proxy.GetAsync("x", CancellationToken.None);
@@ -180,7 +180,7 @@ public class ProxyIntegrationTests
     {
         var inner = new AlwaysSucceedImpl();
         var retry = new RetryPolicy(maxAttempts: 3, backoffMs: 1, jitter: false, perAttemptTimeoutMs: 0);
-        var proxy = new INonThrowingServiceResilienceProxy(inner, retry);
+        var proxy = new INonThrowingServiceResilienceProxy(inner, new NonThrowingServiceResiliencePolicies { Retry = retry });
 
         var result = await proxy.GetAsync("y", CancellationToken.None);
 

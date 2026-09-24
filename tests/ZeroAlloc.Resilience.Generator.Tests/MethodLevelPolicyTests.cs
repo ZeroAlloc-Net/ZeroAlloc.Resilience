@@ -29,7 +29,7 @@ public class MethodLevelPolicyTests
         errors.Should().BeEmpty();
         compilation.GetTypeByMetadataName("Repro.IOrdersApiResilienceProxy").Should().NotBeNull();
         compilation.GetSymbolsWithName("AddOrdersApiResilience", SymbolFilter.Member)
-            .OfType<IMethodSymbol>().Should().ContainSingle();
+            .OfType<IMethodSymbol>().Should().HaveCount(2, "one overload without configure, one with configure");
     }
 
     [Fact]
@@ -50,9 +50,10 @@ public class MethodLevelPolicyTests
         var (compilation, errors) = TestHelper.RunAndCompile(source);
 
         errors.Should().BeEmpty();
-        compilation.GetSymbolsWithName("AddStockApiResilience", SymbolFilter.Member)
-            .OfType<IMethodSymbol>().Should().ContainSingle()
-            .Which.ContainingType.DeclaredAccessibility.Should().Be(Accessibility.Internal);
+        var methods = compilation.GetSymbolsWithName("AddStockApiResilience", SymbolFilter.Member)
+            .OfType<IMethodSymbol>().ToArray();
+        methods.Should().HaveCount(2, "one overload without configure, one with configure");
+        methods[0].ContainingType.DeclaredAccessibility.Should().Be(Accessibility.Internal);
     }
 
     [Fact]

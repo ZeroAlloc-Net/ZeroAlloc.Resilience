@@ -8,6 +8,8 @@ internal sealed record ResilienceModel(
     string InterfaceName,
     string InterfaceFqn,            // e.g. global::MyApp.IExternalService
     bool IsPublic,                  // interface and every containing type are public
+    string PoliciesClassName,       // e.g. JevApiResiliencePolicies
+    ImmutableArray<PolicySlot> Slots,
     RetryConfig? ClassRetry,
     TimeoutConfig? ClassTimeout,
     RateLimitConfig? ClassRateLimit,
@@ -41,7 +43,13 @@ internal sealed record MethodModel(
     RetryConfig? Retry,
     TimeoutConfig? Timeout,
     RateLimitConfig? RateLimit,
-    CircuitBreakerConfig? CircuitBreaker
+    CircuitBreakerConfig? CircuitBreaker,
+    // The slot this method reads for each kind: its own when it has the attribute, otherwise the
+    // interface slot; null when the method has no such policy.
+    PolicySlot? RetrySlot = null,
+    PolicySlot? TimeoutSlot = null,
+    PolicySlot? RateLimiterSlot = null,
+    PolicySlot? CircuitBreakerSlot = null
 )
 {
     // Methods returning a Result whose failure the generator can build, sync or async, return

@@ -10,7 +10,7 @@ using ZeroAlloc.Resilience.AotSmoke;
 
 var inner = new FlakyImpl { FailTimes = 2 };
 var retry = new RetryPolicy(maxAttempts: 3, backoffMs: 1, jitter: false, perAttemptTimeoutMs: 0);
-var proxy = new IFlakyServiceResilienceProxy(inner, retry);
+var proxy = new IFlakyServiceResilienceProxy(inner, new FlakyServiceResiliencePolicies { Retry = retry });
 
 var result = await proxy.GetAsync("x", CancellationToken.None).ConfigureAwait(false);
 if (!string.Equals(result, "ok:x", StringComparison.Ordinal))
@@ -20,7 +20,7 @@ if (inner.CallCount != 3)
 
 // Second invocation on a fresh impl: success on first try should NOT retry.
 var innerHappy = new FlakyImpl();
-var proxyHappy = new IFlakyServiceResilienceProxy(innerHappy, retry);
+var proxyHappy = new IFlakyServiceResilienceProxy(innerHappy, new FlakyServiceResiliencePolicies { Retry = retry });
 var happy = await proxyHappy.GetAsync("y", CancellationToken.None).ConfigureAwait(false);
 if (!string.Equals(happy, "ok:y", StringComparison.Ordinal))
     return Fail($"Happy-path expected 'ok:y', got '{happy}'");
