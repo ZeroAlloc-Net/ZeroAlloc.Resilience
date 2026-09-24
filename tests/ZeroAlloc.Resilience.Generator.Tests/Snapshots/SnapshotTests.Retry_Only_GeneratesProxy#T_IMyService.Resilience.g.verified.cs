@@ -9,6 +9,11 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace T;
 
+public sealed class MyServiceResiliencePolicies
+{
+    public global::ZeroAlloc.Resilience.RetryPolicy Retry { get; set; } = new global::ZeroAlloc.Resilience.RetryPolicy(3, 100, false, 0);
+}
+
 internal sealed class IMyServiceResilienceProxy : global::T.IMyService
 {
     private readonly global::T.IMyService _inner;

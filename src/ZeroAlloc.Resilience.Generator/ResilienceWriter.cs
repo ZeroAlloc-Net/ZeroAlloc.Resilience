@@ -23,11 +23,24 @@ internal static class ResilienceWriter
             sb.AppendLine();
         }
 
+        WritePolicies(sb, model);
+        sb.AppendLine();
         WriteProxy(sb, model);
         sb.AppendLine();
         WriteDiExtension(sb, model);
 
         return sb.ToString();
+    }
+
+    // One settable property per slot, defaulting to the attribute values, so a new instance is a
+    // complete configuration. Its accessibility follows the interface's, like the DI extension.
+    private static void WritePolicies(StringBuilder sb, ResilienceModel model)
+    {
+        sb.AppendLine($"{(model.IsPublic ? "public" : "internal")} sealed class {model.PoliciesClassName}");
+        sb.AppendLine("{");
+        foreach (var slot in model.Slots)
+            sb.AppendLine($"    public {slot.TypeFqn} {slot.PropertyName} {{ get; set; }} = {slot.DefaultExpression};");
+        sb.AppendLine("}");
     }
 
     private static void WriteProxy(StringBuilder sb, ResilienceModel model)

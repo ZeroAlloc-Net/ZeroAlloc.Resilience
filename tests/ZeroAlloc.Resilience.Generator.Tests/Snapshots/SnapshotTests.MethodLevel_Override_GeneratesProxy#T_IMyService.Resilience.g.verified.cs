@@ -9,6 +9,14 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace T;
 
+public sealed class MyServiceResiliencePolicies
+{
+    public global::ZeroAlloc.Resilience.RetryPolicy Retry { get; set; } = new global::ZeroAlloc.Resilience.RetryPolicy(3, 200, false, 0);
+    public global::ZeroAlloc.Resilience.TimeoutPolicy Timeout { get; set; } = new global::ZeroAlloc.Resilience.TimeoutPolicy(5000);
+    public global::ZeroAlloc.Resilience.RetryPolicy PostAsyncRetry { get; set; } = new global::ZeroAlloc.Resilience.RetryPolicy(1, 200, false, 0);
+    public global::ZeroAlloc.Resilience.TimeoutPolicy PostAsyncTimeout { get; set; } = new global::ZeroAlloc.Resilience.TimeoutPolicy(500);
+}
+
 internal sealed class IMyServiceResilienceProxy : global::T.IMyService
 {
     private readonly global::T.IMyService _inner;

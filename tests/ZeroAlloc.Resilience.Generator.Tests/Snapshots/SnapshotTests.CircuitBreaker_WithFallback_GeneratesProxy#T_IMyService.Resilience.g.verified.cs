@@ -9,6 +9,11 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace T;
 
+public sealed class MyServiceResiliencePolicies
+{
+    public global::ZeroAlloc.Resilience.CircuitBreakerPolicy CircuitBreaker { get; set; } = new global::ZeroAlloc.Resilience.CircuitBreakerPolicy(3, 500, 1);
+}
+
 internal sealed class IMyServiceResilienceProxy : global::T.IMyService
 {
     private readonly global::T.IMyService _inner;
