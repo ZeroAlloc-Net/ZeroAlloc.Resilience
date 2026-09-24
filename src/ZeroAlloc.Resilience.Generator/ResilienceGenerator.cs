@@ -221,6 +221,7 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
             Namespace: ns,
             InterfaceName: iface.Name,
             InterfaceFqn: interfaceFqn,
+            IsPublic: IsEffectivelyPublic(iface),
             ClassRetry: classRetry,
             ClassTimeout: classTimeout,
             ClassRateLimit: classRateLimit,
@@ -228,6 +229,17 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
             Methods: methodsBuilder.ToImmutable(),
             PassthroughMethods: passthroughBuilder.ToImmutable(),
             Diagnostics: diagnosticsBuilder.ToImmutable());
+    }
+
+    // An internal interface, or a public one nested in a non-public type, cannot appear in a
+    // public signature: the DI extension would fail with CS0703.
+    private static bool IsEffectivelyPublic(INamedTypeSymbol symbol)
+    {
+        for (ISymbol? current = symbol; current is INamedTypeSymbol; current = current.ContainingType)
+        {
+            if (current.DeclaredAccessibility != Accessibility.Public) return false;
+        }
+        return true;
     }
 
     // ── Attribute helpers ──────────────────────────────────────────────────────

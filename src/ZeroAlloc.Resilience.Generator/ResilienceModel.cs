@@ -7,6 +7,7 @@ internal sealed record ResilienceModel(
     string? Namespace,
     string InterfaceName,
     string InterfaceFqn,            // e.g. global::MyApp.IExternalService
+    bool IsPublic,                  // interface and every containing type are public
     RetryConfig? ClassRetry,
     TimeoutConfig? ClassTimeout,
     RateLimitConfig? ClassRateLimit,
