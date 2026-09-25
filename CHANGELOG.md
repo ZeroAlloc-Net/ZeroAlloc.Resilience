@@ -1,5 +1,16 @@
 # Changelog
 
+## [3.0.0](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v2.0.1...v3.0.0) (2026-09-25)
+
+
+### ⚠ BREAKING CHANGES
+
+* **generator:** interfaces whose members are all inherited now get proxies, and shapes the generator cannot support on them are ZR0003 or ZR0007 errors instead of being silently skipped; default-implemented members are forwarded to the inner instance.
+
+### Features
+
+* **generator:** forward inherited and default-implemented interface members ([#174](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/174)) ([1729449](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/172944922d0e827c37c122b463445d783fcbe3f8))
+
 ## [2.0.1](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v2.0.0...v2.0.1) (2026-09-25)
 
 
