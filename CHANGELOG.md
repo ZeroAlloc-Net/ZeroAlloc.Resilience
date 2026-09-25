@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.1.0](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v3.0.0...v3.1.0) (2026-09-25)
+
+
+### Features
+
+* **generator:** add opt-in internal accessibility for generated entry points ([#176](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/176)) ([ab85042](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/ab85042371ef1946bb9143a7f247829e187434e4)), closes [#152](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/152)
+
 ## [3.0.0](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v2.0.1...v3.0.0) (2026-09-25)
 
 
