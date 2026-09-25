@@ -1,6 +1,7 @@
 namespace ZeroAlloc.Resilience.Generator;
 
 using System.Collections.Immutable;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 
@@ -90,8 +91,94 @@ internal static class ResilienceWriter
     private static void WriteMethod(StringBuilder sb, MethodModel method)
     {
         var asyncKw = method.IsAsync ? "async " : "";
-        sb.AppendLine($"    public {asyncKw}{method.ReturnTypeFqn} {method.Name}({method.ParameterList})");
+        if (method.ExplicitImplementations.Length == 0)
+        {
+            sb.AppendLine(MethodHeader(method.ExplicitInterface, method.HidesObjectMember, asyncKw, method.ReturnTypeFqn, method.Name,
+                method.TypeParameterList, method.ParameterList, method.ConstraintClauses, method.ExplicitConstraintClauses));
+            WriteMethodBody(sb, method);
+            return;
+        }
+
+        // Collapsed declarations: the public member and one explicit implementation per other
+        // declaration all run one policy-wrapped body, which takes the index of the declaration
+        // to call on the inner service. The policies, and so the slots, are shared.
+        var core = $"__{method.HelperName}_Resilient{method.TypeParameterList}";
+        var args = method.ArgumentList.Length == 0 ? "" : ", " + method.ArgumentList;
+        var declarations = method.ExplicitImplementations.Split('|');
+        sb.AppendLine(MethodHeader(method.ExplicitInterface, method.HidesObjectMember, "", method.ReturnTypeFqn, method.Name,
+            method.TypeParameterList, method.ParameterList, method.ConstraintClauses, method.ExplicitConstraintClauses));
+        sb.AppendLine($"        => {core}(0{args});");
+        sb.AppendLine();
+        for (var i = 0; i < declarations.Length; i++)
+        {
+            sb.AppendLine($"    {method.ReturnTypeFqn} {declarations[i]}.{method.Name}{method.TypeParameterList}({method.ParameterList}){method.ExplicitConstraintClauses}");
+            sb.AppendLine($"        => {core}({(i + 1).ToString(CultureInfo.InvariantCulture)}{args});");
+            sb.AppendLine();
+        }
+
+        var parameters = method.ParameterList.Length == 0 ? "" : ", " + method.ParameterList;
+        sb.AppendLine($"    private {asyncKw}{method.ReturnTypeFqn} __{method.HelperName}_Resilient{method.TypeParameterList}(int __declaration{parameters}){method.ConstraintClauses}");
+        WriteMethodBody(sb, method);
+
+        // The inner call for one declaration, through that declaration's own interface.
+        sb.AppendLine($"    private {method.ReturnTypeFqn} __{method.HelperName}_Inner{method.TypeParameterList}(int __declaration{parameters}){method.ConstraintClauses}");
         sb.AppendLine("    {");
+        sb.AppendLine("        switch (__declaration)");
+        sb.AppendLine("        {");
+        for (var i = 0; i < declarations.Length; i++)
+        {
+            sb.AppendLine($"            case {(i + 1).ToString(CultureInfo.InvariantCulture)}:");
+            WriteDispatchCall(sb, method, $"(({declarations[i]})_inner)");
+        }
+        sb.AppendLine("            default:");
+        WriteDispatchCall(sb, method, method.InnerReceiver);
+        sb.AppendLine("        }");
+        sb.AppendLine("    }");
+        sb.AppendLine();
+    }
+
+    private static void WriteDispatchCall(StringBuilder sb, MethodModel method, string receiver)
+    {
+        var call = $"{receiver}.{method.Name}{method.TypeParameterList}({method.ArgumentList})";
+        if (string.Equals(method.ReturnTypeFqn, "void", System.StringComparison.Ordinal))
+        {
+            sb.AppendLine($"                {call};");
+            sb.AppendLine("                return;");
+        }
+        else
+        {
+            sb.AppendLine($"                return {call};");
+        }
+    }
+
+    // The inner call with the given arguments: on the declaration's receiver, or through the
+    // dispatch method of a collapsed member.
+    private static string InnerCall(MethodModel method, string args) =>
+        method.ExplicitImplementations.Length == 0
+            ? $"{method.InnerReceiver}.{method.Name}{method.TypeParameterList}({args})"
+            : $"__{method.HelperName}_Inner{method.TypeParameterList}(__declaration{(args.Length == 0 ? "" : ", " + args)})";
+
+    // "public async T Name<T>(...) where ..." for a public member; "async T global::Ns.IBase.Name<T>(...)"
+    // for an explicit implementation, which states only the `class` or `default` constraints `T?` needs.
+    // A public member that hides an object member by name and parameters gets `new`.
+    private static string MethodHeader(string explicitInterface, bool hidesObjectMember, string asyncKw, string returnType, string name,
+        string typeParameters, string parameters, string constraints, string explicitConstraints) =>
+        explicitInterface.Length == 0
+            ? $"    public {(hidesObjectMember ? "new " : "")}{asyncKw}{returnType} {name}{typeParameters}({parameters}){constraints}"
+            : $"    {asyncKw}{returnType} {explicitInterface}.{name}{typeParameters}({parameters}){explicitConstraints}";
+
+    private static void WriteMethodBody(StringBuilder sb, MethodModel method)
+    {
+        sb.AppendLine("    {");
+
+        // 0. out parameters: every path that returns without a successful inner call, a failure
+        // Result or a fallback that throws, still has to assign them.
+        if (method.OutParameterNames.Length > 0)
+        {
+            foreach (var name in method.OutParameterNames.Split(','))
+                sb.AppendLine($"        {name} = default!;");
+            sb.AppendLine();
+        }
 
         // 1. Rate limit
         if (method.RateLimit is not null)
@@ -113,7 +200,7 @@ internal static class ResilienceWriter
             {
                 var awaitFb = method.IsAsync ? "await " : "";
                 var configFb = method.IsAsync ? ".ConfigureAwait(false)" : "";
-                var fallbackCall = $"{awaitFb}_inner.{method.FallbackMethodName}({method.ArgumentList}){configFb}";
+                var fallbackCall = $"{awaitFb}{method.FallbackReceiver}.{method.FallbackMethodName}({method.ArgumentList}){configFb}";
                 if (method.ReturnsValue)
                     sb.AppendLine($"            return {fallbackCall};");
                 else
@@ -186,7 +273,7 @@ internal static class ResilienceWriter
         sb.AppendLine("            try");
         sb.AppendLine("            {");
         var callArgs = method.HasCancellationToken ? method.ArgumentListWithToken : method.ArgumentList;
-        sb.AppendLine($"                {CaptureCall(method, $"{awaitKw}_inner.{method.Name}({callArgs}){configKw}")}");
+        sb.AppendLine($"                {CaptureCall(method, $"{awaitKw}{InnerCall(method, callArgs)}{configKw}")}");
         if (method.CircuitBreaker is not null)
             sb.AppendLine($"                {method.CircuitBreakerSlot!.FieldName}.OnSuccess();");
         sb.AppendLine($"                {ReturnCaptured(method)}");
@@ -211,12 +298,9 @@ internal static class ResilienceWriter
         sb.AppendLine("            }");
         sb.AppendLine("        }");
         sb.AppendLine("        // All attempts exhausted");
-        if (method.Retry!.NonThrowing && method.ResultKind != ResultKind.ResilienceError)
-        {
-            // NonThrowing=true but type extraction failed — emit a hard compile error instead of silently generating throwing code
-            sb.AppendLine($"#error ZR: [Retry(NonThrowing = true)] requires the method return type to be Result<T, ResilienceError> or UnitResult<ResilienceError> (on method '{method.Name}')");
-        }
-        else if (method.ReturnsFailureResult)
+        // NonThrowing on a return type that cannot hold a ResilienceError never reaches the writer:
+        // it is ZR0003, or ZR0006 with NonThrowing left off an inherited default method.
+        if (method.ReturnsFailureResult)
         {
             // Result return types get a failure of their own type instead of an exception.
             sb.AppendLine($"        return {FailureExpression(method, "\"Retry\"", "__lastEx?.Message ?? \"All retry attempts failed.\"", "__lastEx")};");
@@ -253,7 +337,7 @@ internal static class ResilienceWriter
             sb.AppendLine("        global::System.Exception __lastEx;");
             sb.AppendLine("        try");
             sb.AppendLine("        {");
-            sb.AppendLine($"            {CaptureCall(method, $"{awaitKw}_inner.{method.Name}({callArgs}){configKw}")}");
+            sb.AppendLine($"            {CaptureCall(method, $"{awaitKw}{InnerCall(method, callArgs)}{configKw}")}");
             if (method.CircuitBreaker is not null)
                 sb.AppendLine($"            {method.CircuitBreakerSlot!.FieldName}.OnSuccess();");
             sb.AppendLine($"            {ReturnCaptured(method)}");
@@ -270,7 +354,7 @@ internal static class ResilienceWriter
         {
             sb.AppendLine("        try");
             sb.AppendLine("        {");
-            sb.AppendLine($"            {CaptureCall(method, $"{awaitKw}_inner.{method.Name}({callArgs}){configKw}")}");
+            sb.AppendLine($"            {CaptureCall(method, $"{awaitKw}{InnerCall(method, callArgs)}{configKw}")}");
             sb.AppendLine($"            {method.CircuitBreakerSlot!.FieldName}.OnSuccess();");
             sb.AppendLine($"            {ReturnCaptured(method)}");
             sb.AppendLine("        }");
@@ -282,7 +366,7 @@ internal static class ResilienceWriter
         }
         else
         {
-            var call = $"{awaitKw}_inner.{method.Name}({callArgs}){configKw}";
+            var call = $"{awaitKw}{InnerCall(method, callArgs)}{configKw}";
             sb.AppendLine(method.ReturnsValue ? $"        return {call};" : $"        {call};");
         }
     }
@@ -324,36 +408,70 @@ internal static class ResilienceWriter
         var awaitKw = method.IsAsync ? "await " : "";
         var configKw = method.IsAsync ? ".ConfigureAwait(false)" : "";
         var asyncKw = method.IsAsync ? "async " : "";
-        sb.AppendLine($"    public {asyncKw}{method.ReturnTypeFqn} {method.Name}({method.ParameterList})");
-        sb.AppendLine($"        => {awaitKw}_inner.{method.Name}({method.ArgumentList}){configKw};");
+        // A by-reference return forwards the inner reference: `=> ref _inner.Slot()`.
+        var refKw = method.ReturnsByRef ? "ref " : "";
+        sb.AppendLine(MethodHeader(method.ExplicitInterface, method.HidesObjectMember, asyncKw, method.ReturnTypeFqn, method.Name,
+            method.TypeParameterList, method.ParameterList, method.ConstraintClauses, method.ExplicitConstraintClauses));
+        sb.AppendLine($"        => {awaitKw}{refKw}{method.InnerReceiver}.{method.Name}{method.TypeParameterList}({method.ArgumentList}){configKw};");
         sb.AppendLine();
+
+        // Collapsed declarations: each other declaration forwards through its own interface.
+        foreach (var declaration in ExplicitDeclarations(method.ExplicitImplementations))
+        {
+            sb.AppendLine($"    {asyncKw}{method.ReturnTypeFqn} {declaration}.{method.Name}{method.TypeParameterList}({method.ParameterList}){method.ExplicitConstraintClauses}");
+            sb.AppendLine($"        => {awaitKw}{refKw}(({declaration})_inner).{method.Name}{method.TypeParameterList}({method.ArgumentList}){configKw};");
+            sb.AppendLine();
+        }
     }
+
+    private static string[] ExplicitDeclarations(string explicitImplementations) =>
+        explicitImplementations.Length == 0 ? System.Array.Empty<string>() : explicitImplementations.Split('|');
 
     // No policy ever applies to a property, indexer or event — only methods carry [Retry],
     // [Timeout], [RateLimit] or [CircuitBreaker] — so every one of these is a plain forwarding
     // member, unchanged from the interface's own behaviour.
     private static void WritePassthroughMember(StringBuilder sb, PassthroughMemberModel member)
     {
+        // The public member, then, for collapsed declarations, an explicit implementation for each
+        // other declaration that forwards through its own interface.
+        WritePassthroughMember(sb, member,
+            member.ExplicitInterface.Length == 0 ? "public " : member.ExplicitInterface + ".", member.InnerReceiver);
+        foreach (var declaration in ExplicitDeclarations(member.ExplicitImplementations))
+            WritePassthroughMember(sb, member, $"{declaration}.", $"(({declaration})_inner)");
+    }
+
+    // prefix: "public " for the public member, "global::Ns.IBase." for an explicit implementation.
+    private static void WritePassthroughMember(StringBuilder sb, PassthroughMemberModel member, string prefix, string receiver)
+    {
         switch (member.Kind)
         {
             case PassthroughMemberKind.Property:
-                WritePassthroughPropertyOrIndexer(sb, member, isIndexer: false);
+                WritePassthroughPropertyOrIndexer(sb, member, isIndexer: false, prefix, receiver);
                 break;
             case PassthroughMemberKind.Indexer:
-                WritePassthroughPropertyOrIndexer(sb, member, isIndexer: true);
+                WritePassthroughPropertyOrIndexer(sb, member, isIndexer: true, prefix, receiver);
                 break;
             case PassthroughMemberKind.Event:
-                WritePassthroughEvent(sb, member);
+                WritePassthroughEvent(sb, member, prefix, receiver);
                 break;
         }
     }
 
-    private static void WritePassthroughPropertyOrIndexer(StringBuilder sb, PassthroughMemberModel member, bool isIndexer)
+    private static void WritePassthroughPropertyOrIndexer(StringBuilder sb, PassthroughMemberModel member, bool isIndexer, string prefix, string receiver)
     {
-        var header = isIndexer
-            ? $"    public {member.TypeFqn} this[{member.ParameterList}]"
-            : $"    public {member.TypeFqn} {member.Name}";
-        var innerAccess = isIndexer ? $"_inner[{member.ArgumentList}]" : $"_inner.{member.Name}";
+        var isPublic = string.Equals(prefix, "public ", System.StringComparison.Ordinal);
+        var header = (isPublic, isIndexer) switch
+        {
+            (true, true) => $"    public {member.TypeFqn} this[{member.ParameterList}]",
+            (true, false) => $"    public {member.TypeFqn} {member.Name}",
+            (false, true) => $"    {member.TypeFqn} {prefix}this[{member.ParameterList}]",
+            (false, false) => $"    {member.TypeFqn} {prefix}{member.Name}",
+        };
+        // A by-reference property forwards the inner reference: `=> ref _inner.Slot`.
+        var refKw = member.ReturnsByRef ? "ref " : "";
+        var innerAccess = isIndexer
+            ? $"{refKw}{receiver}[{member.ArgumentList}]"
+            : $"{refKw}{receiver}.{member.Name}";
 
         // A get-only member with no setter or init accessor stays expression-bodied; anything
         // with a setter and/or an init accessor needs the block form so each accessor gets its
@@ -385,12 +503,15 @@ internal static class ResilienceWriter
         sb.AppendLine();
     }
 
-    private static void WritePassthroughEvent(StringBuilder sb, PassthroughMemberModel member)
+    private static void WritePassthroughEvent(StringBuilder sb, PassthroughMemberModel member, string prefix, string receiver)
     {
-        sb.AppendLine($"    public event {member.TypeFqn} {member.Name}");
+        var header = string.Equals(prefix, "public ", System.StringComparison.Ordinal)
+            ? $"    public event {member.TypeFqn} {member.Name}"
+            : $"    event {member.TypeFqn} {prefix}{member.Name}";
+        sb.AppendLine(header);
         sb.AppendLine("    {");
-        sb.AppendLine($"        add => _inner.{member.Name} += value;");
-        sb.AppendLine($"        remove => _inner.{member.Name} -= value;");
+        sb.AppendLine($"        add => {receiver}.{member.Name} += value;");
+        sb.AppendLine($"        remove => {receiver}.{member.Name} -= value;");
         sb.AppendLine("    }");
         sb.AppendLine();
     }

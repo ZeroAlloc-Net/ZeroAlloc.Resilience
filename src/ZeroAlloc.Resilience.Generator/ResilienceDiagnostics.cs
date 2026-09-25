@@ -31,7 +31,7 @@ internal static class ResilienceDiagnostics
     public static readonly DiagnosticDescriptor UnconstructibleResultError = new(
         id: "ZR0003",
         title: "Policy cannot build a failure for this Result error type",
-        messageFormat: "Method '{0}' returns '{1}'. {2} must return a failure when there is no inner Result to return, but the generator cannot construct the error type '{3}'. {4}.",
+        messageFormat: "Method '{0}' returns '{1}'. {2}. {3}.",
         category: Category,
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
@@ -44,6 +44,31 @@ internal static class ResilienceDiagnostics
         id: "ZR0004",
         title: "Invalid policy attribute value",
         messageFormat: "{0} on '{1}'. {2} must be {3}, but is {4}.",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    /// <summary>
+    /// ZR0006 — A policy cannot be applied to a method, so it runs without it (Warning): an
+    /// inherited default-implemented method the policy, from the proxied interface or the method's
+    /// own attribute, cannot wrap; or an own method the proxy does not implement, because it has
+    /// an object member's signature, is sealed, static or not public.
+    /// </summary>
+    public static readonly DiagnosticDescriptor PolicyNotAppliedToInheritedMethod = new(
+        id: "ZR0006",
+        title: "Policy not applied to method",
+        messageFormat: "{0} '{1}' on '{2}' {3} without {4}, because {5}. {6}.",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true);
+
+    /// <summary>
+    /// ZR0007 — The interface has a shape the generator cannot build a valid proxy for (Error).
+    /// </summary>
+    public static readonly DiagnosticDescriptor UnsupportedInterfaceShape = new(
+        id: "ZR0007",
+        title: "Interface shape not supported by the resilience generator",
+        messageFormat: "'{0}' is not supported by the resilience generator: {1}. No proxy is generated for it.",
         category: Category,
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);

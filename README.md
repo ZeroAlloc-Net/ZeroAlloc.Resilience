@@ -181,6 +181,9 @@ catch (ResilienceException ex) when (ex.Policy == ResiliencePolicy.CircuitBreake
 | [ZR0001](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/diagnostics/ZR0001.md) | Error | Fallback method not found or signature mismatch |
 | [ZR0002](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/diagnostics/ZR0002.md) | Warning | Timeout configured but method has no `CancellationToken` |
 | [ZR0003](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/diagnostics/ZR0003.md) | Error | Policy cannot build a failure for this `Result<T, E>` error type |
+| [ZR0004](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/diagnostics/ZR0004.md) | Error | Invalid policy attribute value |
+| [ZR0006](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/diagnostics/ZR0006.md) | Warning | Policy not applied to method |
+| [ZR0007](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/diagnostics/ZR0007.md) | Error | Interface shape not supported by the resilience generator |
 
 ---
 
