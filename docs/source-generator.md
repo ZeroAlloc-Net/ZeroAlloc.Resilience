@@ -12,7 +12,7 @@ ZeroAlloc.Resilience uses a Roslyn `IIncrementalGenerator` to emit a proxy class
 
 ## What triggers generation
 
-The generator activates on any `interface` that has at least one of `[Retry]`, `[Timeout]`, `[RateLimit]`, or `[CircuitBreaker]`, either on the interface itself or on one of its methods. Methods without an effective policy are forwarded to the inner service unchanged. It reads method signatures, collects effective policies (method-level shadows interface-level), validates fallback methods, and emits one file per annotated interface.
+The generator activates on any `interface` that has at least one of `[Retry]`, `[Timeout]`, `[RateLimit]`, or `[CircuitBreaker]`, either on the interface itself or on one of its methods. Methods without an effective policy are forwarded to the inner service unchanged. It reads method signatures, collects effective policies (method-level shadows interface-level), validates fallback methods, and emits one file per annotated interface. The proxy also implements every public, abstract property, indexer and event the interface declares itself: they are always forwarded to the inner service unchanged, since no policy ever applies to them, and an `init`-only accessor throws `NotSupportedException` instead — see [Passthrough methods](#passthrough-methods) below. A member the interface only inherits from a base interface is not forwarded yet; see #169.
 
 ---
 
@@ -224,6 +224,34 @@ public async ValueTask<string> OtherAsync(string id, CancellationToken ct)
 ```
 
 `FetchAsync` and `FetchFallback` in the example above are not passthrough methods — both inherit the interface-level policies, because neither carries a method-level attribute of its own and the interface's `[CircuitBreaker]` does not name a `Fallback`.
+
+### Properties, indexers and events
+
+No policy attribute ever applies to a property, an indexer or an event — only methods can carry `[Retry]`, `[Timeout]`, `[RateLimit]` or `[CircuitBreaker]` — so every public, abstract one the interface declares itself is always forwarded to the inner service unchanged, the same shape as a passthrough method:
+
+```csharp
+public string TypeName => _inner.TypeName;
+
+public string this[int index] => _inner[index];
+
+public event EventHandler<string> Changed
+{
+    add => _inner.Changed += value;
+    remove => _inner.Changed -= value;
+}
+```
+
+A non-public member, and a member with a default implementation, stay unimplemented by the proxy — exactly as a default-implemented *method* already did before this member forwarding existed, so a patch release doesn't change their runtime behaviour. A member the interface only inherits from a base interface is not forwarded yet either; see #169.
+
+An `init`-only accessor is the one exception among the members that *are* forwarded: an `init` accessor can only be assigned from an object-initializer expression, and by the time the proxy's own `init` accessor would run, the inner instance is already fully constructed, so there is no method body that can forward the value to it. The generated accessor throws `NotSupportedException` with a message explaining this instead of silently doing nothing:
+
+```csharp
+public string Name
+{
+    get => _inner.Name;
+    init => throw new global::System.NotSupportedException("...");
+}
+```
 
 ### No try/catch when not needed
 

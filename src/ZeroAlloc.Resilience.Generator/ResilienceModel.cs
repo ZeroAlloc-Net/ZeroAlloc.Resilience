@@ -16,6 +16,7 @@ internal sealed record ResilienceModel(
     CircuitBreakerConfig? ClassCircuitBreaker,
     ImmutableArray<MethodModel> Methods,
     ImmutableArray<PassthroughMethodModel> PassthroughMethods,
+    ImmutableArray<PassthroughMemberModel> PassthroughMembers,
     ImmutableArray<Diagnostic> Diagnostics
 );
 
@@ -25,6 +26,23 @@ internal sealed record PassthroughMethodModel(
     bool IsAsync,
     string ParameterList,
     string ArgumentList
+);
+
+// A non-method interface member forwarded to the inner service unchanged: no policy ever applies
+// to a property, indexer or event, so unlike PassthroughMethodModel there is only one shape. Only
+// the interface's own members reach this model in 2.0.1 — an inherited property, indexer or event
+// is not forwarded yet (#169).
+internal enum PassthroughMemberKind { Property, Indexer, Event }
+
+internal sealed record PassthroughMemberModel(
+    PassthroughMemberKind Kind,
+    string Name,              // property/event name; "this" for an indexer (display only)
+    string TypeFqn,
+    bool HasGet,               // property/indexer: a get accessor is declared
+    bool HasSet,                // property/indexer: a set (non-init) accessor is declared
+    bool HasInit,                // property/indexer: an init accessor is declared
+    string? ParameterList = null, // indexer only: "int index"
+    string? ArgumentList = null   // indexer only: "index"
 );
 
 internal sealed record MethodModel(
