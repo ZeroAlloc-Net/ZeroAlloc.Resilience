@@ -15,6 +15,15 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
     private const string RateLimitFqn      = "ZeroAlloc.Resilience.RateLimitAttribute";
     private const string CircuitBreakerFqn = "ZeroAlloc.Resilience.CircuitBreakerAttribute";
 
+    // FullyQualifiedFormat alone drops the `?` on a nullable reference type (its
+    // MiscellaneousOptions doesn't include IncludeNullableReferenceTypeModifier), so a `string?`
+    // property or parameter would render as `string` and the emitted member would mismatch the
+    // interface's nullability, producing CS8766/CS8767. Every type rendered into generated code
+    // uses this format instead.
+    private static readonly SymbolDisplayFormat FqnFormat = SymbolDisplayFormat.FullyQualifiedFormat
+        .WithMiscellaneousOptions(SymbolDisplayFormat.FullyQualifiedFormat.MiscellaneousOptions
+            | SymbolDisplayMiscellaneousOptions.IncludeNullableReferenceTypeModifier);
+
     // "IJevApi" -> "JevApi", "IInvoiceApi" -> "InvoiceApi", "Item" -> "Item", "I" -> "I"
     internal static string ServiceName(string interfaceName) =>
         interfaceName.Length > 1 && interfaceName[0] == 'I' && char.IsUpper(interfaceName[1])
@@ -199,13 +208,13 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
                 }
             }
 
-            var returnTypeFqn = member.ReturnType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            var returnTypeFqn = member.ReturnType.ToDisplayString(FqnFormat);
             var isAsync = IsAsyncType(member.ReturnType);
             var resultType = isAsync ? UnwrapAsyncType(member.ReturnType) : member.ReturnType;
             var resultKind = ClassifyResult(resultType);
             var resultTypeFqn = resultKind == ResultKind.None
                 ? null
-                : resultType!.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                : resultType!.ToDisplayString(FqnFormat);
 
             // ZR0003: a policy that rejects a call without calling the inner service has to
             // return a failure, and it cannot build one for a foreign error type. Rejections are
@@ -221,7 +230,7 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
             }
 
             var paramList = string.Join(", ", member.Parameters.Select(static p =>
-                $"{p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)} {p.Name}"));
+                $"{p.Type.ToDisplayString(FqnFormat)} {p.Name}"));
             var argList = string.Join(", ", member.Parameters.Select(static p => p.Name));
             var argListWithToken = string.Join(", ", member.Parameters.Select(static p =>
                 string.Equals(p.Type.ToDisplayString(), "System.Threading.CancellationToken", StringComparison.Ordinal)
@@ -274,10 +283,10 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
             if (member.MethodKind != MethodKind.Ordinary) continue;
             if (policyMethods.Contains(member)) continue; // already in policy methods
 
-            var ptReturnTypeFqn = member.ReturnType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            var ptReturnTypeFqn = member.ReturnType.ToDisplayString(FqnFormat);
             var ptIsAsync = IsAsyncType(member.ReturnType);
             var ptParamList = string.Join(", ", member.Parameters.Select(static p =>
-                $"{p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)} {p.Name}"));
+                $"{p.Type.ToDisplayString(FqnFormat)} {p.Name}"));
             var ptArgList = string.Join(", ", member.Parameters.Select(static p => p.Name));
 
             passthroughBuilder.Add(new PassthroughMethodModel(
@@ -288,7 +297,67 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
                 ArgumentList: ptArgList));
         }
 
-        var interfaceFqn = iface.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        // Properties, indexers and events never carry a resilience policy — only methods do — so
+        // every one the interface itself declares is always a plain forwarding member. Only the
+        // interface's own members (iface.GetMembers()): forwarding a member inherited from a base
+        // interface is #169, not this patch. A member is included only when it is public,
+        // non-static and abstract — a non-public or default-implemented member stays unimplemented
+        // by the proxy, exactly as a default-implemented method already did on 2.0.0.
+        var passthroughMembersBuilder = ImmutableArray.CreateBuilder<PassthroughMemberModel>();
+
+        foreach (var property in iface.GetMembers().OfType<IPropertySymbol>())
+        {
+            if (property.IsStatic || !property.IsAbstract) continue;
+            if (property.DeclaredAccessibility != Accessibility.Public) continue;
+
+            var hasGet = property.GetMethod is not null;
+            var hasInit = property.SetMethod is { IsInitOnly: true };
+            var hasSet = property.SetMethod is { IsInitOnly: false };
+            var typeFqn = property.Type.ToDisplayString(FqnFormat);
+
+            if (property.IsIndexer)
+            {
+                var idxParamList = string.Join(", ", property.Parameters.Select(static p =>
+                    $"{p.Type.ToDisplayString(FqnFormat)} {p.Name}"));
+                var idxArgList = string.Join(", ", property.Parameters.Select(static p => p.Name));
+
+                passthroughMembersBuilder.Add(new PassthroughMemberModel(
+                    Kind: PassthroughMemberKind.Indexer,
+                    Name: "this",
+                    TypeFqn: typeFqn,
+                    HasGet: hasGet,
+                    HasSet: hasSet,
+                    HasInit: hasInit,
+                    ParameterList: idxParamList,
+                    ArgumentList: idxArgList));
+            }
+            else
+            {
+                passthroughMembersBuilder.Add(new PassthroughMemberModel(
+                    Kind: PassthroughMemberKind.Property,
+                    Name: property.Name,
+                    TypeFqn: typeFqn,
+                    HasGet: hasGet,
+                    HasSet: hasSet,
+                    HasInit: hasInit));
+            }
+        }
+
+        foreach (var evt in iface.GetMembers().OfType<IEventSymbol>())
+        {
+            if (evt.IsStatic || !evt.IsAbstract) continue;
+            if (evt.DeclaredAccessibility != Accessibility.Public) continue;
+
+            passthroughMembersBuilder.Add(new PassthroughMemberModel(
+                Kind: PassthroughMemberKind.Event,
+                Name: evt.Name,
+                TypeFqn: evt.Type.ToDisplayString(FqnFormat),
+                HasGet: false,
+                HasSet: false,
+                HasInit: false));
+        }
+
+        var interfaceFqn = iface.ToDisplayString(FqnFormat);
 
         return new ResilienceModel(
             Namespace: ns,
@@ -303,6 +372,7 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
             ClassCircuitBreaker: classCircuitBreaker,
             Methods: methodsBuilder.ToImmutable(),
             PassthroughMethods: passthroughBuilder.ToImmutable(),
+            PassthroughMembers: passthroughMembersBuilder.ToImmutable(),
             Diagnostics: diagnosticsBuilder.ToImmutable());
     }
 

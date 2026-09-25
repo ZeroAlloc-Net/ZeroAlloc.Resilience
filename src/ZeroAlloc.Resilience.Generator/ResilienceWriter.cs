@@ -81,6 +81,9 @@ internal static class ResilienceWriter
         foreach (var method in model.PassthroughMethods)
             WritePassthrough(sb, method);
 
+        foreach (var member in model.PassthroughMembers)
+            WritePassthroughMember(sb, member);
+
         sb.AppendLine("}");
     }
 
@@ -323,6 +326,72 @@ internal static class ResilienceWriter
         var asyncKw = method.IsAsync ? "async " : "";
         sb.AppendLine($"    public {asyncKw}{method.ReturnTypeFqn} {method.Name}({method.ParameterList})");
         sb.AppendLine($"        => {awaitKw}_inner.{method.Name}({method.ArgumentList}){configKw};");
+        sb.AppendLine();
+    }
+
+    // No policy ever applies to a property, indexer or event — only methods carry [Retry],
+    // [Timeout], [RateLimit] or [CircuitBreaker] — so every one of these is a plain forwarding
+    // member, unchanged from the interface's own behaviour.
+    private static void WritePassthroughMember(StringBuilder sb, PassthroughMemberModel member)
+    {
+        switch (member.Kind)
+        {
+            case PassthroughMemberKind.Property:
+                WritePassthroughPropertyOrIndexer(sb, member, isIndexer: false);
+                break;
+            case PassthroughMemberKind.Indexer:
+                WritePassthroughPropertyOrIndexer(sb, member, isIndexer: true);
+                break;
+            case PassthroughMemberKind.Event:
+                WritePassthroughEvent(sb, member);
+                break;
+        }
+    }
+
+    private static void WritePassthroughPropertyOrIndexer(StringBuilder sb, PassthroughMemberModel member, bool isIndexer)
+    {
+        var header = isIndexer
+            ? $"    public {member.TypeFqn} this[{member.ParameterList}]"
+            : $"    public {member.TypeFqn} {member.Name}";
+        var innerAccess = isIndexer ? $"_inner[{member.ArgumentList}]" : $"_inner.{member.Name}";
+
+        // A get-only member with no setter or init accessor stays expression-bodied; anything
+        // with a setter and/or an init accessor needs the block form so each accessor gets its
+        // own line.
+        if (member.HasGet && !member.HasSet && !member.HasInit)
+        {
+            sb.AppendLine($"{header} => {innerAccess};");
+            sb.AppendLine();
+            return;
+        }
+
+        sb.AppendLine(header);
+        sb.AppendLine("    {");
+        if (member.HasGet)
+            sb.AppendLine($"        get => {innerAccess};");
+        if (member.HasSet)
+            sb.AppendLine($"        set => {innerAccess} = value;");
+        if (member.HasInit)
+        {
+            // An init accessor can only be assigned inside an object-initializer expression, so
+            // there is no method body that can forward a value to _inner's init accessor — by the
+            // time this proxy's init accessor runs, _inner is already fully constructed and its
+            // init-only member can no longer be assigned. Throwing tells the caller why, instead
+            // of silently doing nothing.
+            var memberDisplay = isIndexer ? "this[]" : member.Name;
+            sb.AppendLine($"        init => throw new global::System.NotSupportedException(\"'{memberDisplay}' has an init-only accessor, which cannot be forwarded: an init accessor can only be assigned from an object initializer, and by the time this proxy's init accessor runs, the inner instance is already constructed.\");");
+        }
+        sb.AppendLine("    }");
+        sb.AppendLine();
+    }
+
+    private static void WritePassthroughEvent(StringBuilder sb, PassthroughMemberModel member)
+    {
+        sb.AppendLine($"    public event {member.TypeFqn} {member.Name}");
+        sb.AppendLine("    {");
+        sb.AppendLine($"        add => _inner.{member.Name} += value;");
+        sb.AppendLine($"        remove => _inner.{member.Name} -= value;");
+        sb.AppendLine("    }");
         sb.AppendLine();
     }
 
