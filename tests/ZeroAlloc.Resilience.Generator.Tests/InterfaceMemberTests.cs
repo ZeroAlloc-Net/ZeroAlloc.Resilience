@@ -2,8 +2,7 @@ namespace ZeroAlloc.Resilience.Generator.Tests;
 
 // Regression coverage for #168: the generated proxy only forwarded ordinary methods, so any
 // interface property, indexer or event on an interface the generator touched failed with CS0535.
-// Scoped to the interface's own members for the 2.0.1 patch — forwarding a member inherited from a
-// base interface is #169, not this release.
+// Inherited and default-implemented members are covered by InheritedMemberTests (#169).
 public class InterfaceMemberTests
 {
     [Fact]
@@ -176,14 +175,12 @@ public class InterfaceMemberTests
     }
 
     [Fact]
-    public void InterfaceLevelRetry_PropertiesOnly_NoMethods_GeneratesNoProxy()
+    public void InterfaceLevelRetry_PropertiesOnly_NoMethods_GeneratesProxy()
     {
-        // Exactly the 2.0.0 shape: an interface-level policy attribute with zero ordinary methods
-        // on the interface produced no proxy at all on 2.0.0 (methodsBuilder stays empty and there
-        // are no diagnostics, so TryParse returns null before any source is emitted). Adding
-        // property/indexer/event forwarding must not change that — there is nothing for a policy
-        // to wrap, so generating a proxy that does nothing but forward properties would be new
-        // behaviour this patch does not introduce.
+        // 2.0.x emitted no proxy for an interface with a policy attribute but no ordinary method.
+        // Since 2.1 (#169) an interface with a policy attribute and at least one member, own or
+        // inherited, gets a proxy: the same rule gives the Outbox/Scheduling bridge interface,
+        // whose only method is inherited, its proxy.
         var source = """
             using ZeroAlloc.Resilience;
             namespace Repro;
@@ -198,7 +195,6 @@ public class InterfaceMemberTests
         var (compilation, errors) = TestHelper.RunAndCompile(source);
 
         errors.Should().BeEmpty();
-        compilation.GetTypeByMetadataName("Repro.IPropertiesOnlyResilienceProxy").Should().BeNull(
-            "an interface with no ordinary method must still get no proxy, exactly as on 2.0.0");
+        compilation.GetTypeByMetadataName("Repro.IPropertiesOnlyResilienceProxy").Should().NotBeNull();
     }
 }

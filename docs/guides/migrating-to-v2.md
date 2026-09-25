@@ -85,3 +85,8 @@ registrations with `Add{Name}ResiliencePolicies()`.
 | `RateLimitScope.Instance` | behaved like `Shared` | one limiter per proxy instance |
 | Invalid policy values, for example `MaxAttempts = 0` | the proxy never called the inner service | in an attribute: error ZR0004 at build time; set in `configure`: `ArgumentOutOfRangeException` when the policies are built |
 | Name derivation for interfaces like IInvoiceApi | every leading I stripped: AddnvoiceApiResilience | one I stripped before an uppercase letter: AddInvoiceApiResilience |
+
+## Next: 3.0
+
+3.0 forwards inherited and default-implemented interface members, and reports shapes it cannot
+proxy as errors. See [Migrating to 3.0](migrating-to-v3.md).

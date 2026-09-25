@@ -12,7 +12,7 @@ ZeroAlloc.Resilience uses a Roslyn `IIncrementalGenerator` to emit a proxy class
 
 ## What triggers generation
 
-The generator activates on any `interface` that has at least one of `[Retry]`, `[Timeout]`, `[RateLimit]`, or `[CircuitBreaker]`, either on the interface itself or on one of its methods. Methods without an effective policy are forwarded to the inner service unchanged. It reads method signatures, collects effective policies (method-level shadows interface-level), validates fallback methods, and emits one file per annotated interface. The proxy also implements every public, abstract property, indexer and event the interface declares itself: they are always forwarded to the inner service unchanged, since no policy ever applies to them, and an `init`-only accessor throws `NotSupportedException` instead — see [Passthrough methods](#passthrough-methods) below. A member the interface only inherits from a base interface is not forwarded yet; see #169.
+The generator activates on any `interface` that has at least one of `[Retry]`, `[Timeout]`, `[RateLimit]`, or `[CircuitBreaker]`, either on the interface itself or on one of its methods. Methods without an effective policy are forwarded to the inner service unchanged. It reads method signatures, collects effective policies (method-level shadows interface-level), validates fallback methods, and emits one file per annotated interface. The proxy implements every public instance member the interface declares or inherits from a base interface: methods, properties, indexers and events, abstract or default-implemented. Properties, indexers and events are always forwarded to the inner service unchanged, since no policy ever applies to them, and an `init`-only accessor throws `NotSupportedException` instead — see [Properties, indexers and events](#properties-indexers-and-events) below. An interface with a policy attribute of its own, on the interface or one of its own methods, and at least one member, own or inherited, gets a proxy, so an interface whose members are all inherited gets one too. A policy attribute on an inherited method alone does not make a proxy: the base interface that declares it gets its own — see [Inherited and default-implemented members](#inherited-and-default-implemented-members).
 
 ---
 
@@ -227,7 +227,7 @@ public async ValueTask<string> OtherAsync(string id, CancellationToken ct)
 
 ### Properties, indexers and events
 
-No policy attribute ever applies to a property, an indexer or an event — only methods can carry `[Retry]`, `[Timeout]`, `[RateLimit]` or `[CircuitBreaker]` — so every public, abstract one the interface declares itself is always forwarded to the inner service unchanged, the same shape as a passthrough method:
+No policy attribute ever applies to a property, an indexer or an event — only methods can carry `[Retry]`, `[Timeout]`, `[RateLimit]` or `[CircuitBreaker]` — so every public one the interface declares or inherits is always forwarded to the inner service unchanged, the same shape as a passthrough method:
 
 ```csharp
 public string TypeName => _inner.TypeName;
@@ -241,7 +241,7 @@ public event EventHandler<string> Changed
 }
 ```
 
-A non-public member, and a member with a default implementation, stay unimplemented by the proxy — exactly as a default-implemented *method* already did before this member forwarding existed, so a patch release doesn't change their runtime behaviour. A member the interface only inherits from a base interface is not forwarded yet either; see #169.
+Only the accessors a class can implement are forwarded: a default-implemented property with a `private set` gets only its `get` accessor in the proxy.
 
 An `init`-only accessor is the one exception among the members that *are* forwarded: an `init` accessor can only be assigned from an object-initializer expression, and by the time the proxy's own `init` accessor would run, the inner instance is already fully constructed, so there is no method body that can forward the value to it. The generated accessor throws `NotSupportedException` with a message explaining this instead of silently doing nothing:
 
@@ -252,6 +252,103 @@ public string Name
     init => throw new global::System.NotSupportedException("...");
 }
 ```
+
+### Inherited and default-implemented members
+
+Since 3.0, members inherited from base interfaces are forwarded like the interface's own, and so are members with a default implementation. An inherited method gets its own method-level attributes, and otherwise the interface-level attributes of the interface being proxied, not those of the base interface that declares it:
+
+```csharp
+public interface IOutboxDispatcher<TMessage>
+{
+    ValueTask DispatchAsync(TMessage message, CancellationToken ct);
+}
+
+// No members of its own: the proxy forwards the inherited DispatchAsync under [Retry].
+[Retry(MaxAttempts = 3, BackoffMs = 200)]
+public interface IOrderDispatcher : IOutboxDispatcher<OrderPlaced> { }
+```
+
+An inherited member is called through its declaring interface, so the call binds to exactly that declaration:
+
+```csharp
+// inside the retry loop of the generated DispatchAsync
+await ((global::MyApp.IOutboxDispatcher<global::MyApp.OrderPlaced>)_inner).DispatchAsync(message, __ct).ConfigureAwait(false);
+```
+
+A default-implemented member is forwarded to the inner service, so an implementation that overrides the default wins over the interface's default body. A default-implemented method keeps its method-level attributes and gets the interface-level ones, exactly like an abstract method, except for a policy it cannot take: that one is left off with [ZR0006](diagnostics/ZR0006.md).
+
+Some members are not forwarded:
+
+- static, private and protected members, which a public proxy member cannot implement
+- `sealed` members, which are neither abstract nor virtual, so no class can implement them
+- explicit implementations declared in an interface, such as `string IBase.Name => "x";`
+- an inherited member that a more derived interface already implements explicitly
+
+Some members are forwarded without policies, because no policy body can wrap them:
+
+- a method or property that returns by `ref` or `ref readonly`, forwarded as `=> ref ((IBase)_inner).Slot()`
+- an async method with a `ref`, `out`, `in` or ref struct parameter, such as `ReadOnlySpan<char>`, forwarded without `async`, returning the inner task
+
+A policy on one of these is [ZR0007](diagnostics/ZR0007.md), or ZR0006 for an inherited default method, which is forwarded without it.
+
+`ToString()`, `Equals(object)` and `GetHashCode()` declared in the interface or a base interface are not forwarded: `object`'s own members implement them on the proxy, so the proxy keeps its own equality and hash code. A skipped method of the interface itself still counts for slot numbering, so the slots of its overloads keep their names; the same goes for a `sealed` method. A policy on such a method has no effect, and [ZR0006](diagnostics/ZR0006.md) reports it.
+
+A public proxy member that only shares an `object` member's name and parameters, such as `object ToString()` from a base interface, is emitted with `new`, so it does not warn with CS0114 or CS0108.
+
+Other rules for inherited members:
+
+- **Policy slots.** The interface's own methods keep the slot names they had before inherited methods were forwarded; inherited methods are numbered after them.
+- **Fallback.** A `Fallback` is looked up among the methods the interface declares and inherits. An interface-level `Fallback` must match every method the interface declares itself, or ZR0001 is reported as before. An inherited method it does not match gets the circuit breaker without a fallback.
+- **Policies an inherited default method cannot take.** If a policy would give an inherited default-implemented method a build error, for example `NonThrowing` on a method that does not return `Result<T, ResilienceError>`, that policy is left off the method with warning [ZR0006](diagnostics/ZR0006.md). Its other policies still apply. On a method the proxy has to implement, an own or an abstract one, the same case is an error.
+- **Declared more than once.** See [Declarations with the same name](#declarations-with-the-same-name).
+
+### Declarations with the same name
+
+An interface can inherit several declarations that one public member cannot implement: from two unrelated base interfaces, through `new`-hiding along one inheritance path, as `IEnumerable<T>.GetEnumerator` hides `IEnumerable.GetEnumerator`, or as a property, a method or an indexer with the same name; an indexer is named `Item`. Generic methods that differ only in their type parameter names, such as `Foo<T>(T)` and `Foo<U>(U)`, are the same declaration. The proxy implements every one of them. Each declaration reaches the inner service's own implementation of it, through its own interface:
+
+- One declaration is the **public** member: the interface's own declaration if it has one; otherwise, along an inheritance path, the most-derived declaration, the one whose `new` hides the others; between unrelated bases, the first in `AllInterfaces` order. For a property and a method with the same name, the kind of that declaration stays public.
+- Every other declaration gets an **explicit interface implementation** with its exact signature, nullable annotations included, which forwards through a cast of `_inner` to its own interface. A generic one states only the constraints C# requires there: `where T : class` or `where T : default` when its signature uses `T?`.
+- Declarations that render exactly alike, nullable annotations and resilience attributes included, share one implementation: the public or explicit member for the first one, plus an explicit implementation for each of the others.
+- A method's explicit implementation gets the same policies as a public one. Declarations with different signatures each get their own policy slots, named like overloads: `GetRetry`, `Get2Retry`. The interface's own methods keep their slot names.
+- The interface's own declaration implements every inherited declaration with the same signature, as it did in 2.0.
+
+```csharp
+[Retry(MaxAttempts = 3)]
+public interface IItems : IEnumerable<int> { }
+
+// generated
+public IEnumerator<int> GetEnumerator() { /* retry loop around ((IEnumerable<int>)_inner).GetEnumerator() */ }
+IEnumerator global::System.Collections.IEnumerable.GetEnumerator() { /* retry loop around ((IEnumerable)_inner).GetEnumerator() */ }
+```
+
+Identical declarations from two instances of one generic base, such as `IMessageHandler<FooMessage>` and `IMessageHandler<BarMessage>` both declaring `string Name { get; }`, get one public member and one explicit implementation. For a method with policies, they share one policy-wrapped body and one set of policy slots:
+
+```csharp
+[Retry(MaxAttempts = 3)]
+public interface IDualHandler : IMessageHandler<FooMessage>, IMessageHandler<BarMessage> { }
+
+// generated
+public string Name => ((global::MyApp.IMessageHandler<global::MyApp.FooMessage>)_inner).Name;
+string global::MyApp.IMessageHandler<global::MyApp.BarMessage>.Name
+    => ((global::MyApp.IMessageHandler<global::MyApp.BarMessage>)_inner).Name;
+
+public ValueTask<string> DescribeAsync(CancellationToken ct) => __DescribeAsync_Resilient(0, ct);
+ValueTask<string> global::MyApp.IMessageHandler<global::MyApp.BarMessage>.DescribeAsync(CancellationToken ct)
+    => __DescribeAsync_Resilient(1, ct);
+// __DescribeAsync_Resilient holds the retry loop; its inner call dispatches on the index.
+```
+
+### Generic methods and by-reference parameters
+
+A generic method keeps its type parameters and constraint clauses, and every call passes the type arguments explicitly. `ref`, `out`, `in` and `params` parameters keep their modifiers in the parameter list, and `ref`, `out` and `in` are passed on in every argument list: the inner call inside a retry loop, a single call, a fallback call and a passthrough.
+
+An `out` parameter under a policy is assigned `default` before the first attempt. Each attempt that reaches the inner service assigns it again, so a successful call returns the inner service's value. A path that returns without a successful inner call, such as a failure `Result` after the last retry or a rejected call, returns the parameter as `default`. A `ref` parameter is passed to every attempt as it is, so an attempt that changes it and then fails leaves the change for the next attempt.
+
+An async method cannot have `ref`, `out`, `in` or ref struct parameters, so a policy cannot wrap one: that is [ZR0007](diagnostics/ZR0007.md), or [ZR0006](diagnostics/ZR0006.md) for an inherited method with a default body. Without a policy, such a method is forwarded and returns the inner task directly.
+
+### Unsupported interface shapes
+
+A generic interface, an interface the generated top-level classes cannot access, and an interface with a `static abstract` or `static virtual` member in itself or a base interface cannot get a valid proxy. The generator reports [ZR0007](diagnostics/ZR0007.md) for them and emits nothing.
 
 ### No try/catch when not needed
 
@@ -289,3 +386,5 @@ dotnet build
 | ZR0002 | Warning | `[Timeout]` or `PerAttemptTimeoutMs` configured but method has no `CancellationToken` parameter |
 | ZR0003 | Error | `[RateLimit]`, `[CircuitBreaker]` without `Fallback`, or `NonThrowing` on a method returning `Result<T, E>` with an `E` the generator cannot construct |
 | ZR0004 | Error | A policy attribute property is explicitly set to a value the runtime policy constructor would reject, for example `[Timeout(Ms = 0)]` |
+| ZR0006 | Warning | A policy cannot be applied to a method: an inherited default-implemented method it cannot wrap, which is forwarded without it, or an own method the proxy does not implement, because it has an `object` member's signature or is `sealed`, static or not public |
+| ZR0007 | Error | The interface is generic, not accessible to a top-level class, has a `static abstract` or `static virtual` member, or a policy applies to a method that returns by reference or is async with a `ref`, `out`, `in` or ref struct parameter |
