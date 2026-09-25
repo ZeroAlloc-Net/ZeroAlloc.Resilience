@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.1](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v2.0.0...v2.0.1) (2026-09-25)
+
+
+### Bug Fixes
+
+* **generator:** forward interface properties, indexers and events ([#170](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/170)) ([3538f5d](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/3538f5d0f754310a03c9a275f871ca8b2f82c571)), closes [#168](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/168)
+
 ## [2.0.0](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v1.3.8...v2.0.0) (2026-09-24)
 
 
