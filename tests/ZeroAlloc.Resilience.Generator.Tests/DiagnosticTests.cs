@@ -76,4 +76,36 @@ public class DiagnosticTests
         var diags = await TestHelper.GetDiagnostics<ResilienceGenerator>(source);
         diags.Should().NotContain(d => d.Id.StartsWith("ZR"));
     }
+
+    // #152: an invalid ZeroAllocGeneratedAccessibility value is a build error, not a silently
+    // ignored setting, and never depends on there being a candidate interface in the compilation.
+    [Fact]
+    public async Task InvalidGeneratedAccessibilityValue_ZR0008_Reported()
+    {
+        var source = """
+            namespace T;
+            public class NothingToGenerateFor;
+            """;
+        var diags = await TestHelper.GetDiagnostics<ResilienceGenerator>(source, generatedAccessibility: "Priv4te");
+        diags.Should().Contain(d => d.Id == "ZR0008" && d.Severity == DiagnosticSeverity.Error
+            && d.GetMessage().Contains("Priv4te"));
+    }
+
+    [Fact]
+    public async Task ValidGeneratedAccessibilityValue_NoZR0008()
+    {
+        var source = """
+            using ZeroAlloc.Resilience;
+            using System.Threading;
+            using System.Threading.Tasks;
+            namespace T;
+            [Retry(MaxAttempts = 3)]
+            public interface IMyService
+            {
+                ValueTask<string> GetAsync(string id, CancellationToken ct);
+            }
+            """;
+        var diags = await TestHelper.GetDiagnostics<ResilienceGenerator>(source, generatedAccessibility: "Internal");
+        diags.Should().NotContain(d => d.Id == "ZR0008");
+    }
 }

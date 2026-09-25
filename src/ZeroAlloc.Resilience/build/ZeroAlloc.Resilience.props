@@ -1,0 +1,19 @@
+<Project>
+  <!--
+    Makes the ZeroAllocGeneratedAccessibility MSBuild property visible to the generator as
+    build_property.ZeroAllocGeneratedAccessibility (see #152). The same property name is shared,
+    unqualified, across every ZeroAlloc generator package:
+
+      <PropertyGroup>
+        <ZeroAllocGeneratedAccessibility>Internal</ZeroAllocGeneratedAccessibility>
+      </PropertyGroup>
+
+    Unset or "Public" (the default) leaves every generated entry point public, byte-identical to
+    before #152. "Internal" emits the generated policies class and DI extension methods internal
+    for every annotated interface, including a public one. Any other value is generator error
+    ZR0008. See docs/guides/di-registration.md.
+  -->
+  <ItemGroup>
+    <CompilerVisibleProperty Include="ZeroAllocGeneratedAccessibility" />
+  </ItemGroup>
+</Project>

@@ -6,6 +6,7 @@
   <Folder Name="/tests/">
     <Project Path="tests/ZeroAlloc.Resilience.Tests/ZeroAlloc.Resilience.Tests.csproj" />
     <Project Path="tests/ZeroAlloc.Resilience.Generator.Tests/ZeroAlloc.Resilience.Generator.Tests.csproj" />
+    <Project Path="tests/ZeroAlloc.Resilience.PackTests/ZeroAlloc.Resilience.PackTests.csproj" />
   </Folder>
   <Folder Name="/benchmarks/">
     <Project Path="benchmarks/ZeroAlloc.Resilience.Benchmarks/ZeroAlloc.Resilience.Benchmarks.csproj" />

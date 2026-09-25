@@ -35,10 +35,12 @@ internal static class ResilienceWriter
     }
 
     // One settable property per slot, defaulting to the attribute values, so a new instance is a
-    // complete configuration. Its accessibility follows the interface's, like the DI extension.
+    // complete configuration. Its accessibility follows EmitPublicEntryPoints, like the DI
+    // extension: public for a public interface unless ZeroAllocGeneratedAccessibility=Internal
+    // forces it internal (#152).
     private static void WritePolicies(StringBuilder sb, ResilienceModel model)
     {
-        sb.AppendLine($"{(model.IsPublic ? "public" : "internal")} sealed class {model.PoliciesClassName}");
+        sb.AppendLine($"{(model.EmitPublicEntryPoints ? "public" : "internal")} sealed class {model.PoliciesClassName}");
         sb.AppendLine("{");
         foreach (var slot in model.Slots)
             sb.AppendLine($"    public {slot.TypeFqn} {slot.PropertyName} {{ get; set; }} = {slot.DefaultExpression};");
@@ -521,9 +523,11 @@ internal static class ResilienceWriter
         var name = ResilienceGenerator.ServiceName(model.InterfaceName);
         var policies = model.PoliciesClassName;
 
-        // Partial declarations must agree on accessibility, so non-public interfaces get their
-        // own internal class instead of sharing the public ResilienceServiceCollectionExtensions.
-        sb.AppendLine(model.IsPublic
+        // Partial declarations must agree on accessibility, so an interface whose entry points are
+        // not emitted public — an internal interface (#146), or a public one with
+        // ZeroAllocGeneratedAccessibility=Internal (#152) — gets its own internal class instead of
+        // sharing the public ResilienceServiceCollectionExtensions.
+        sb.AppendLine(model.EmitPublicEntryPoints
             ? "public static partial class ResilienceServiceCollectionExtensions"
             : "internal static partial class InternalResilienceServiceCollectionExtensions");
         sb.AppendLine("{");

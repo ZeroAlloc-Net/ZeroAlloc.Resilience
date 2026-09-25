@@ -1,5 +1,6 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.Diagnostics;
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
@@ -42,7 +43,7 @@ internal static class TestHelper
         GeneratorSnapshot.Verify(driver);
     }
 
-    public static Task<IReadOnlyList<Diagnostic>> GetDiagnostics<TGenerator>(string source)
+    public static Task<IReadOnlyList<Diagnostic>> GetDiagnostics<TGenerator>(string source, string? generatedAccessibility = null)
         where TGenerator : IIncrementalGenerator, new()
     {
         var syntaxTree = CSharpSyntaxTree.ParseText(source, ParseOptions);
@@ -61,8 +62,10 @@ internal static class TestHelper
 
         var generator = new TGenerator();
         var driver = CSharpGeneratorDriver.Create(generator)
-            .WithUpdatedParseOptions(ParseOptions)
-            .RunGenerators(compilation);
+            .WithUpdatedParseOptions(ParseOptions);
+        if (generatedAccessibility is not null)
+            driver = driver.WithUpdatedAnalyzerConfigOptions(GeneratedAccessibilityOptionsProvider(generatedAccessibility));
+        driver = driver.RunGenerators(compilation);
 
         var result = driver.GetRunResult();
         var updated = compilation.AddSyntaxTrees(result.GeneratedTrees);
@@ -71,6 +74,36 @@ internal static class TestHelper
             .ToList();
 
         return Task.FromResult<IReadOnlyList<Diagnostic>>(diags);
+    }
+
+    // Simulates the compiler-visible ZeroAllocGeneratedAccessibility MSBuild property (#152), the
+    // same way the shipped build/ZeroAlloc.Resilience.props makes it visible to the generator in a
+    // real consumer build: as build_property.ZeroAllocGeneratedAccessibility in the global options.
+    public static AnalyzerConfigOptionsProvider GeneratedAccessibilityOptionsProvider(string value) =>
+        new TestAnalyzerConfigOptionsProvider(new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["build_property.ZeroAllocGeneratedAccessibility"] = value,
+        });
+
+    private sealed class TestAnalyzerConfigOptionsProvider : AnalyzerConfigOptionsProvider
+    {
+        private readonly TestAnalyzerConfigOptions _global;
+
+        public TestAnalyzerConfigOptionsProvider(IReadOnlyDictionary<string, string> globalOptions) =>
+            _global = new TestAnalyzerConfigOptions(globalOptions);
+
+        public override AnalyzerConfigOptions GlobalOptions => _global;
+        public override AnalyzerConfigOptions GetOptions(SyntaxTree tree) => _global;
+        public override AnalyzerConfigOptions GetOptions(AdditionalText textFile) => _global;
+    }
+
+    private sealed class TestAnalyzerConfigOptions : AnalyzerConfigOptions
+    {
+        private readonly IReadOnlyDictionary<string, string> _options;
+
+        public TestAnalyzerConfigOptions(IReadOnlyDictionary<string, string> options) => _options = options;
+
+        public override bool TryGetValue(string key, out string value) => _options.TryGetValue(key, out value!);
     }
 
     // Runtime framework references only, instead of every assembly loaded in the test domain:
@@ -91,7 +124,7 @@ internal static class TestHelper
     /// Runs the generator and compiles its output together with <paramref name="source"/>.
     /// Returns the updated compilation and every error, from the generator or the compiler.
     /// </summary>
-    public static (Compilation Compilation, ImmutableArray<Diagnostic> Errors) RunAndCompile(string source)
+    public static (Compilation Compilation, ImmutableArray<Diagnostic> Errors) RunAndCompile(string source, string? generatedAccessibility = null)
     {
         var compilation = CSharpCompilation.Create(
             "TestAssembly",
@@ -99,10 +132,12 @@ internal static class TestHelper
             CompileReferences,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
-        CSharpGeneratorDriver
+        var driver = CSharpGeneratorDriver
             .Create(new ResilienceGenerator())
-            .WithUpdatedParseOptions(ParseOptions)
-            .RunGeneratorsAndUpdateCompilation(compilation, out var output, out var generatorDiagnostics);
+            .WithUpdatedParseOptions(ParseOptions);
+        if (generatedAccessibility is not null)
+            driver = driver.WithUpdatedAnalyzerConfigOptions(GeneratedAccessibilityOptionsProvider(generatedAccessibility));
+        driver.RunGeneratorsAndUpdateCompilation(compilation, out var output, out var generatorDiagnostics);
 
         var errors = generatorDiagnostics
             .Concat(output.GetDiagnostics())

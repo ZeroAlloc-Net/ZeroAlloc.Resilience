@@ -8,6 +8,11 @@ internal sealed record ResilienceModel(
     string InterfaceName,
     string InterfaceFqn,            // e.g. global::MyApp.IExternalService
     bool IsPublic,                  // interface and every containing type are public
+    // Whether the generated policies class and DI extension methods are emitted public: true when
+    // the interface is public AND ZeroAllocGeneratedAccessibility is Public (the default). False
+    // for an internal interface (unchanged since #146) and for a public interface when the project
+    // opts into ZeroAllocGeneratedAccessibility=Internal (#152). The proxy is always internal.
+    bool EmitPublicEntryPoints,
     string PoliciesClassName,       // e.g. JevApiResiliencePolicies
     ImmutableArray<PolicySlot> Slots,
     RetryConfig? ClassRetry,
@@ -137,3 +142,14 @@ internal sealed record TimeoutConfig(int TotalMs);
 internal enum RateLimitScope { Shared, Instance }
 internal sealed record RateLimitConfig(int MaxPerSecond, int BurstSize, RateLimitScope Scope);
 internal sealed record CircuitBreakerConfig(int MaxFailures, int ResetMs, int HalfOpenProbes);
+
+// The ZeroAllocGeneratedAccessibility MSBuild property, shared verbatim across every ZeroAlloc
+// generator package (see #152). Public, the default, changes nothing. Internal forces every
+// generated public entry point — here, the policies class and the DI extension methods — internal,
+// even for a public interface. The proxy is already internal regardless.
+internal enum GeneratedAccessibilityMode { Public, Internal }
+
+// The result of reading ZeroAllocGeneratedAccessibility from the global analyzer config options,
+// once per compilation. Diagnostic is non-null, and Mode falls back to Public, when the property is
+// set to a value that is neither "Public" nor "Internal" (case-insensitive).
+internal sealed record GeneratedAccessibilityResult(GeneratedAccessibilityMode Mode, Diagnostic? Diagnostic);
