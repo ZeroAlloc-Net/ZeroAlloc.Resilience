@@ -29,6 +29,25 @@
     <AdditionalFiles Include="PublicAPI.Shipped.txt" />
     <AdditionalFiles Include="PublicAPI.Unshipped.txt" />
   </ItemGroup>
+  <!--
+    build/ makes ZeroAllocGeneratedAccessibility CompilerVisible for a project that references this
+    package directly. buildTransitive/ does the same for a project that only gets it transitively,
+    through a project reference to another project that references this package — the generator's
+    analyzer, packed below, runs for those consumers too. See #152.
+  -->
+  <ItemGroup>
+    <!-- Remove the implicit default-glob None items for these two files before re-adding them
+         explicitly below, so pack metadata is set exactly once and dotnet pack does not fail with
+         NETSDK1022 (duplicate 'None' items). -->
+    <None Remove="build\ZeroAlloc.Resilience.props" />
+    <None Remove="buildTransitive\ZeroAlloc.Resilience.props" />
+    <None Include="$(MSBuildThisFileDirectory)build\ZeroAlloc.Resilience.props"
+          Pack="true"
+          PackagePath="build/ZeroAlloc.Resilience.props" />
+    <None Include="$(MSBuildThisFileDirectory)buildTransitive\ZeroAlloc.Resilience.props"
+          Pack="true"
+          PackagePath="buildTransitive/ZeroAlloc.Resilience.props" />
+  </ItemGroup>
   <Target Name="IncludeGeneratorInPackage" BeforeTargets="_GetPackageFiles">
     <ItemGroup>
       <None Include="$(MSBuildThisFileDirectory)..\ZeroAlloc.Resilience.Generator\bin\$(Configuration)\netstandard2.0\ZeroAlloc.Resilience.Generator.dll"

@@ -72,4 +72,18 @@ internal static class ResilienceDiagnostics
         category: Category,
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
+
+    // ZR0005 was removed and must not be reused.
+
+    /// <summary>
+    /// ZR0008 — The <c>ZeroAllocGeneratedAccessibility</c> MSBuild property is set to a value other
+    /// than <c>Public</c> or <c>Internal</c> (Error).
+    /// </summary>
+    public static readonly DiagnosticDescriptor InvalidGeneratedAccessibilityValue = new(
+        id: "ZR0008",
+        title: "Invalid ZeroAllocGeneratedAccessibility value",
+        messageFormat: "ZeroAllocGeneratedAccessibility is set to '{0}'. Allowed values are 'Public' and 'Internal'.",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
 }

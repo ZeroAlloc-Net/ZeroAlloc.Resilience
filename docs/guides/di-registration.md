@@ -150,6 +150,33 @@ builder.Services.AddPaymentGatewayResilience<PaymentGatewayImpl>();
 
 ---
 
+## Generated accessibility
+
+An `internal` interface always gets its `Add{Name}Resilience` and `Add{Name}ResiliencePolicies` extension methods, and its `{Name}ResiliencePolicies` class, emitted `internal` too — into `internal static partial class InternalResilienceServiceCollectionExtensions` instead of the public `ResilienceServiceCollectionExtensions`. This keeps an internal interface from forcing public members onto your library's surface just because it needs DI registration.
+
+A **public** interface normally still gets a public extension and a public policies class, since some libraries expose the interface and want callers to register it directly. If instead you expose a public interface but wire its resilience internally — never asking a caller to call `Add{Name}Resilience` themselves — that public extension is unwanted API surface, and tools like `Microsoft.CodeAnalysis.PublicApiAnalyzers` flag it as RS0016.
+
+Opt in project-wide with `ZeroAllocGeneratedAccessibility`:
+
+```xml
+<PropertyGroup>
+  <ZeroAllocGeneratedAccessibility>Internal</ZeroAllocGeneratedAccessibility>
+</PropertyGroup>
+```
+
+This applies to every annotated interface in the project, public or already-internal:
+- the `{Name}ResiliencePolicies` class is emitted `internal`
+- `Add{Name}Resilience` and `Add{Name}ResiliencePolicies` are emitted into `InternalResilienceServiceCollectionExtensions` instead of `ResilienceServiceCollectionExtensions`
+- the generated proxy is unaffected — it is always `internal`, regardless of this property
+
+The interface itself is never touched: a public interface stays public. Only the entry points the generator emits change accessibility, and only downward — the property can never make anything *more* visible than it already is.
+
+The property name is shared, unqualified, across every ZeroAlloc generator package (ZeroAlloc.Validation, ZeroAlloc.Inject, …), so setting it once in a project covers all of them. The allowed values are `Public` (the default, unchanged output) and `Internal`, compared case-insensitively; any other value is [ZR0008](../diagnostics/ZR0008.md).
+
+With the property unset or `Public`, generated output is byte-identical to before this property existed.
+
+---
+
 ## Hosts that build the proxy
 
 Some hosts construct the generated proxy themselves rather than calling `Add{Name}Resilience<TImpl>()` — ZeroAlloc.Rest, ZeroAlloc.Outbox and ZeroAlloc.Scheduling all do this. Register only the policies, and resolve them where the proxy is built:

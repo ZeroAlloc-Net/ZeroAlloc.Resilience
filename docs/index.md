@@ -68,3 +68,4 @@ services.AddExternalServiceResilience<ExternalServiceImpl>();
 | [ZR0004](diagnostics/ZR0004.md) | Error | Invalid policy attribute value |
 | [ZR0006](diagnostics/ZR0006.md) | Warning | Policy not applied to method |
 | [ZR0007](diagnostics/ZR0007.md) | Error | Interface shape not supported by the resilience generator |
+| [ZR0008](diagnostics/ZR0008.md) | Error | Invalid `ZeroAllocGeneratedAccessibility` value |

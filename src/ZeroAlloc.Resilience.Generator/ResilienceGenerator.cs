@@ -2,6 +2,7 @@ namespace ZeroAlloc.Resilience.Generator;
 
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Diagnostics;
 using System;
 using System.Collections.Immutable;
 using System.Globalization;
@@ -31,6 +32,11 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
             ? interfaceName.Substring(1)
             : interfaceName;
 
+    // The exact MSBuild property name shared, unqualified, across every ZeroAlloc generator
+    // package (#152). CompilerVisibleProperty in the package's build/buildTransitive props makes
+    // it available here as build_property.<name>.
+    private const string GeneratedAccessibilityProperty = "build_property.ZeroAllocGeneratedAccessibility";
+
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
 #pragma warning disable EPS06 // IncrementalValuesProvider is a struct; hidden copies are unavoidable in the incremental pipeline API
@@ -39,9 +45,27 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
             transform: static (ctx, ct) => TryParse(ctx, ct));
         var filtered = candidates.Where(static m => m is not null);
         var models   = filtered.Select(static (m, _) => m!);
+
+        // ZR0008: read once per compilation, independent of whether any interface is a candidate,
+        // so an invalid value is reported even in a project with nothing to generate for.
+        var accessibility = context.AnalyzerConfigOptionsProvider
+            .Select(static (provider, _) => ParseGeneratedAccessibility(provider));
+
+        var modelsWithAccessibility = models
+            .Combine(accessibility.Select(static (result, _) => result.Mode))
+            .Select(static (pair, _) => pair.Left with
+            {
+                EmitPublicEntryPoints = pair.Left.IsPublic && pair.Right == GeneratedAccessibilityMode.Public,
+            });
 #pragma warning restore EPS06
 
-        context.RegisterSourceOutput(models, static (ctx, model) =>
+        context.RegisterSourceOutput(accessibility, static (ctx, result) =>
+        {
+            if (result.Diagnostic is not null)
+                ctx.ReportDiagnostic(result.Diagnostic);
+        });
+
+        context.RegisterSourceOutput(modelsWithAccessibility, static (ctx, model) =>
         {
             foreach (var diag in model.Diagnostics)
                 ctx.ReportDiagnostic(diag);
@@ -57,6 +81,24 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
                 : $"{model.Namespace}_{model.InterfaceName}.Resilience.g.cs";
             ctx.AddSource(hintName, source);
         });
+    }
+
+    // ZR0008: "Public" and "Internal" are the only allowed values, compared case-insensitively; an
+    // unset or empty property defaults to Public, unchanged since before #152. Any other value is
+    // an error, and generation for every interface in the compilation falls back to Public so the
+    // rest of the build still reflects today's behavior instead of silently going internal.
+    private static GeneratedAccessibilityResult ParseGeneratedAccessibility(AnalyzerConfigOptionsProvider provider)
+    {
+        if (!provider.GlobalOptions.TryGetValue(GeneratedAccessibilityProperty, out var raw) || raw.Length == 0)
+            return new GeneratedAccessibilityResult(GeneratedAccessibilityMode.Public, null);
+
+        if (string.Equals(raw, "Public", StringComparison.OrdinalIgnoreCase))
+            return new GeneratedAccessibilityResult(GeneratedAccessibilityMode.Public, null);
+        if (string.Equals(raw, "Internal", StringComparison.OrdinalIgnoreCase))
+            return new GeneratedAccessibilityResult(GeneratedAccessibilityMode.Internal, null);
+
+        var diagnostic = Diagnostic.Create(ResilienceDiagnostics.InvalidGeneratedAccessibilityValue, Location.None, raw);
+        return new GeneratedAccessibilityResult(GeneratedAccessibilityMode.Public, diagnostic);
     }
 
     // Policies may sit on the interface or only on its methods; TryParse does the semantic check.
@@ -499,11 +541,16 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
 
         var interfaceFqn = iface.ToDisplayString(FqnFormat);
 
+        var isPublic = IsEffectivelyPublic(iface);
         return new ResilienceModel(
             Namespace: ns,
             InterfaceName: iface.Name,
             InterfaceFqn: interfaceFqn,
-            IsPublic: IsEffectivelyPublic(iface),
+            IsPublic: isPublic,
+            // Overwritten once the accessibility option is combined in, in Initialize; this default
+            // matches today's behavior (ZeroAllocGeneratedAccessibility unset == Public) for any
+            // code path that reads the model before that combine runs.
+            EmitPublicEntryPoints: isPublic,
             PoliciesClassName: ServiceName(iface.Name) + "ResiliencePolicies",
             Slots: slots.ToImmutable(),
             ClassRetry: classRetry,
@@ -1417,6 +1464,7 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
             InterfaceName: iface.Name,
             InterfaceFqn: iface.ToDisplayString(FqnFormat),
             IsPublic: false,
+            EmitPublicEntryPoints: false,
             PoliciesClassName: ServiceName(iface.Name) + "ResiliencePolicies",
             Slots: ImmutableArray<PolicySlot>.Empty,
             ClassRetry: null,
