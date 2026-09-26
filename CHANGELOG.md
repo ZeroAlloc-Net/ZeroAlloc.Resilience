@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.2.0](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v3.1.0...v3.2.0) (2026-09-26)
+
+
+### Features
+
+* **generator:** retry a failed Result chosen by RetryWhen, and filter exceptions with RetryOnException ([a42f006](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/a42f0068b3ef63ecbaa89992ce998f07f5e26b34))
+* **generator:** take the retry delay from the failure with DelayHint, capped by MaxDelayMs ([a42f006](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/a42f0068b3ef63ecbaa89992ce998f07f5e26b34))
+
+
+### Bug Fixes
+
+* **generator:** end the retry loop through exhaustion when the total timeout fires during a backoff wait ([a42f006](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/a42f0068b3ef63ecbaa89992ce998f07f5e26b34))
+* **generator:** propagate caller cancellation from the retry loop and from guarded single calls ([a42f006](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/a42f0068b3ef63ecbaa89992ce998f07f5e26b34))
+
 ## [3.1.0](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v3.0.0...v3.1.0) (2026-09-25)
 
 
