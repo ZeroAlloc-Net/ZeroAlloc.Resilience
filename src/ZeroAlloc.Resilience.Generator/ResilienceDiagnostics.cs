@@ -86,4 +86,29 @@ internal static class ResilienceDiagnostics
         category: Category,
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
+
+    /// <summary>
+    /// ZR0009 — A [Retry] RetryWhen, RetryOnException or DelayHint names no accessible static
+    /// method with the required signature on the interface or its base interfaces (Error).
+    /// </summary>
+    public static readonly DiagnosticDescriptor RetryMemberNotFound = new(
+        id: "ZR0009",
+        title: "Retry member not found or signature mismatch",
+        messageFormat: "[Retry] {0} = \"{1}\" names no accessible static method on '{2}' or its base interfaces with the signature {3}",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    /// <summary>
+    /// ZR0010 — RetryWhen, or a DelayHint overload that takes the Result error type, cannot apply
+    /// to a method. An Error on a method-level [Retry]; reported with effective severity Warning
+    /// for each method an interface-level [Retry] skips, which keeps exception-only retry.
+    /// </summary>
+    public static readonly DiagnosticDescriptor RetryMemberNotApplicable = new(
+        id: "ZR0010",
+        title: "Result-aware retry cannot apply to method",
+        messageFormat: "[Retry] {0} cannot apply to '{1}', because {2}. {3}.",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
 }

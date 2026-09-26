@@ -176,6 +176,38 @@ public class PolicySetGenerationTests
         compilation.GetSymbolsWithName("AddItemResilience", SymbolFilter.Member).Should().NotBeEmpty();
     }
 
+    [Fact]
+    public void MaxDelayMs_WhenSet_EmitsTheFiveArgumentConstructor()
+    {
+        var (compilation, errors) = TestHelper.RunAndCompile(Usings + """
+            [Retry(MaxAttempts = 4, BackoffMs = 500, MaxDelayMs = 2000)]
+            public interface IJevApi
+            {
+                ValueTask<string> ModelsAsync(CancellationToken ct);
+            }
+            """);
+
+        errors.Should().BeEmpty();
+        string.Join("\n", compilation.SyntaxTrees.Select(static t => t.ToString())).Should()
+            .Contain("Retry { get; set; } = new global::ZeroAlloc.Resilience.RetryPolicy(4, 500, false, 0, 2000);");
+    }
+
+    [Fact]
+    public void MaxDelayMs_WhenUnset_KeepsTheFourArgumentConstructor()
+    {
+        var (compilation, errors) = TestHelper.RunAndCompile(Usings + """
+            [Retry(MaxAttempts = 4, BackoffMs = 500)]
+            public interface IJevApi
+            {
+                ValueTask<string> ModelsAsync(CancellationToken ct);
+            }
+            """);
+
+        errors.Should().BeEmpty();
+        string.Join("\n", compilation.SyntaxTrees.Select(static t => t.ToString())).Should()
+            .Contain("Retry { get; set; } = new global::ZeroAlloc.Resilience.RetryPolicy(4, 500, false, 0);");
+    }
+
     // "Name: Type" for every property, ordered by name.
     private static string[] Slots(Compilation compilation, string metadataName) =>
         compilation.GetTypeByMetadataName(metadataName)!

@@ -113,7 +113,16 @@ internal sealed record MethodModel(
     bool HidesObjectMember = false,
     // The method name, with the declaration number for a later declaration of the same name:
     // names the private helpers of a collapsed member, which must not collide between them.
-    string HelperName = ""
+    string HelperName = "",
+    // The static methods the retry loop calls, as fully qualified call targets such as
+    // "global::Ns.IApi.IsTransient", or null. RetryWhenMethod resolved for this method's Result
+    // error type switches it to the Result-aware loop; ResultDelayHintMethod is the DelayHint
+    // overload taking that error type and is only set with RetryWhenMethod. The other two apply
+    // to every method with retry.
+    string? RetryWhenMethod = null,
+    string? RetryOnExceptionMethod = null,
+    string? ResultDelayHintMethod = null,
+    string? ExceptionDelayHintMethod = null
 )
 {
     // Methods returning a Result whose failure the generator can build, sync or async, return
@@ -137,7 +146,20 @@ internal enum ResultKind
 }
 
 // Effective config = method-level ?? class-level
-internal sealed record RetryConfig(int MaxAttempts, int BackoffMs, bool Jitter, int PerAttemptTimeoutMs, bool NonThrowing = false);
+// MaxDelayMs is null when the attribute does not set it, so the policies class keeps the
+// four-argument RetryPolicy constructor. The three names are the attribute's strings; what they
+// resolve to is per method, on MethodModel. They are part of the record so that two inherited
+// declarations with different names never collapse into one proxy member.
+internal sealed record RetryConfig(
+    int MaxAttempts,
+    int BackoffMs,
+    bool Jitter,
+    int PerAttemptTimeoutMs,
+    bool NonThrowing = false,
+    int? MaxDelayMs = null,
+    string? RetryWhen = null,
+    string? RetryOnException = null,
+    string? DelayHint = null);
 internal sealed record TimeoutConfig(int TotalMs);
 internal enum RateLimitScope { Shared, Instance }
 internal sealed record RateLimitConfig(int MaxPerSecond, int BurstSize, RateLimitScope Scope);

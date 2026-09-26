@@ -60,8 +60,15 @@ public sealed class CircuitBreakerPolicy : IDisposable
         }
     }
 
-    /// <summary>Call after a failed inner invocation.</summary>
-    public void OnFailure(Exception _)
+    /// <summary>Call after an inner invocation that threw.</summary>
+    /// <param name="_">The exception the inner invocation threw. It is not inspected.</param>
+    public void OnFailure(Exception _) => OnFailure();
+
+    /// <summary>
+    /// Call after an inner invocation that failed without throwing, such as a failed Result that
+    /// the retry policy's RetryWhen calls transient.
+    /// </summary>
+    public void OnFailure()
     {
         var state = _fsm.Current;
 

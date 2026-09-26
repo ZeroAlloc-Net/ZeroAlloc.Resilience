@@ -115,5 +115,36 @@ public class CircuitBreakerPolicyTests : IDisposable
         cb.Dispose();
     }
 
+    [Fact]
+    public void OnFailureWithoutException_CountsTowardOpening()
+    {
+        _cb.OnFailure();
+        _cb.OnFailure();
+        _cb.OnFailure();
+        _cb.State.Should().Be(CircuitBreakerState.Open);
+    }
+
+    [Fact]
+    public void OnFailureWithoutException_CountsTogetherWithExceptionFailures()
+    {
+        _cb.OnFailure(new Exception());
+        _cb.OnFailure();
+        _cb.OnFailure(new Exception());
+        _cb.State.Should().Be(CircuitBreakerState.Open);
+    }
+
+    [Fact]
+    public async Task OnFailureWithoutException_InHalfOpen_ReOpensCircuit()
+    {
+        _cb.OnFailure();
+        _cb.OnFailure();
+        _cb.OnFailure();
+        await Task.Delay(200);
+        _cb.State.Should().Be(CircuitBreakerState.HalfOpen);
+
+        _cb.OnFailure();
+        _cb.State.Should().Be(CircuitBreakerState.Open);
+    }
+
     public void Dispose() => _cb.Dispose();
 }

@@ -12,12 +12,14 @@ namespace T;
 public sealed class MyServiceResiliencePolicies
 {
     public global::ZeroAlloc.Resilience.RetryPolicy Retry { get; set; } = new global::ZeroAlloc.Resilience.RetryPolicy(3, 100, false, 0);
+    public global::ZeroAlloc.Resilience.TimeoutPolicy Timeout { get; set; } = new global::ZeroAlloc.Resilience.TimeoutPolicy(5000);
 }
 
 internal sealed class IMyServiceResilienceProxy : global::T.IMyService
 {
     private readonly global::T.IMyService _inner;
     private readonly global::ZeroAlloc.Resilience.RetryPolicy _retry;
+    private readonly global::ZeroAlloc.Resilience.TimeoutPolicy _timeout;
 
     public IMyServiceResilienceProxy(global::T.IMyService inner, MyServiceResiliencePolicies policies)
     {
@@ -25,21 +27,25 @@ internal sealed class IMyServiceResilienceProxy : global::T.IMyService
         global::System.ArgumentNullException.ThrowIfNull(policies);
         _inner = inner;
         _retry = (policies.Retry ?? throw new global::System.ArgumentException("MyServiceResiliencePolicies.Retry is null.", nameof(policies)));
+        _timeout = (policies.Timeout ?? throw new global::System.ArgumentException("MyServiceResiliencePolicies.Timeout is null.", nameof(policies)));
     }
 
-    public async global::System.Threading.Tasks.ValueTask<string> GetAsync(string id, global::System.Threading.CancellationToken ct)
+    public string Get(string id, global::System.Threading.CancellationToken ct)
     {
+        using var __totalCts = global::System.Threading.CancellationTokenSource.CreateLinkedTokenSource(ct);
+        __totalCts.CancelAfter(_timeout.TotalMs);
+
         global::System.Exception? __lastEx = null;
         for (int __attempt = 0; __attempt < _retry.MaxAttempts; __attempt++)
         {
             using var __attemptCts = _retry.PerAttemptTimeoutMs > 0
-                ? global::System.Threading.CancellationTokenSource.CreateLinkedTokenSource(ct)
+                ? global::System.Threading.CancellationTokenSource.CreateLinkedTokenSource(__totalCts.Token)
                 : null;
             __attemptCts?.CancelAfter(_retry.PerAttemptTimeoutMs);
-            var __ct = __attemptCts?.Token ?? ct;
+            var __ct = __attemptCts?.Token ?? __totalCts.Token;
             try
             {
-                var __result = await _inner.GetAsync(id, __ct).ConfigureAwait(false);
+                var __result = _inner.Get(id, __ct);
                 return __result;
             }
             catch (global::System.OperationCanceledException) when (ct.IsCancellationRequested)
@@ -49,8 +55,17 @@ internal sealed class IMyServiceResilienceProxy : global::T.IMyService
             catch (global::System.Exception __ex)
             {
                 __lastEx = __ex;
+                if (__totalCts.IsCancellationRequested)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    break;
+                }
                 if (__attempt == _retry.MaxAttempts - 1) break;
-                await global::System.Threading.Tasks.Task.Delay(_retry.GetBackoffMs(__attempt), ct).ConfigureAwait(false);
+                if (__totalCts.Token.WaitHandle.WaitOne(_retry.GetBackoffMs(__attempt)))
+                {
+                    ct.ThrowIfCancellationRequested();
+                    break;
+                }
             }
         }
         // All attempts exhausted

@@ -23,6 +23,23 @@ public class PolicyValidationTests
         new RetryPolicy(1, 0, jitter: false, 0).MaxAttempts.Should().Be(1);
 
     [Theory]
+    [InlineData(0, 0, 0, 0, "maxAttempts")]
+    [InlineData(1, -1, 0, 0, "backoffMs")]
+    [InlineData(1, 0, -1, 0, "perAttemptTimeoutMs")]
+    [InlineData(1, 0, 0, -1, "maxDelayMs")]
+    public void RetryPolicy_FiveArguments_RejectsOutOfRangeArguments(
+        int maxAttempts, int backoffMs, int perAttemptTimeoutMs, int maxDelayMs, string parameter)
+    {
+        var act = () => new RetryPolicy(maxAttempts, backoffMs, jitter: false, perAttemptTimeoutMs, maxDelayMs);
+
+        act.Should().Throw<ArgumentOutOfRangeException>().WithParameterName(parameter);
+    }
+
+    [Fact]
+    public void RetryPolicy_AcceptsZeroMaxDelayMs() =>
+        new RetryPolicy(1, 0, jitter: false, 0, maxDelayMs: 0).MaxDelayMs.Should().Be(0);
+
+    [Theory]
     [InlineData(0)]
     [InlineData(-1)]
     public void TimeoutPolicy_RejectsNonPositiveTotal(int totalMs)

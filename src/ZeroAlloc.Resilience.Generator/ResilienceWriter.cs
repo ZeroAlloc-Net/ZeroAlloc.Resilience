@@ -234,7 +234,10 @@ internal static class ResilienceWriter
         // 4. Retry loop or single call
         if (method.Retry is not null)
         {
-            WriteRetryLoop(sb, method, hasTotalTimeout);
+            if (method.RetryWhenMethod is not null)
+                WriteResultAwareRetryLoop(sb, method, hasTotalTimeout);
+            else
+                WriteRetryLoop(sb, method, hasTotalTimeout);
         }
         else
         {
@@ -254,24 +257,7 @@ internal static class ResilienceWriter
         sb.AppendLine("        global::System.Exception? __lastEx = null;");
         sb.AppendLine($"        for (int __attempt = 0; __attempt < {retry}.MaxAttempts; __attempt++)");
         sb.AppendLine("        {");
-
-        // The per-attempt timeout is a runtime value, so the CTS is created only when it is set.
-        // Without a CancellationToken parameter there is nothing to propagate it to; ZR0002 warns
-        // when the attribute asks for one.
-        if (method.HasCancellationToken)
-        {
-            var outerToken = hasTotalTimeout ? "__totalCts.Token" : method.CancellationTokenParamName!;
-            sb.AppendLine($"            using var __attemptCts = {retry}.PerAttemptTimeoutMs > 0");
-            sb.AppendLine($"                ? global::System.Threading.CancellationTokenSource.CreateLinkedTokenSource({outerToken})");
-            sb.AppendLine("                : null;");
-            sb.AppendLine($"            __attemptCts?.CancelAfter({retry}.PerAttemptTimeoutMs);");
-            sb.AppendLine($"            var __ct = __attemptCts?.Token ?? {outerToken};");
-        }
-        else if (hasTotalTimeout)
-        {
-            sb.AppendLine("            var __ct = __totalCts.Token;");
-        }
-
+        WriteAttemptToken(sb, method, retry, hasTotalTimeout);
         sb.AppendLine("            try");
         sb.AppendLine("            {");
         var callArgs = method.HasCancellationToken ? method.ArgumentListWithToken : method.ArgumentList;
@@ -280,26 +266,35 @@ internal static class ResilienceWriter
             sb.AppendLine($"                {method.CircuitBreakerSlot!.FieldName}.OnSuccess();");
         sb.AppendLine($"                {ReturnCaptured(method)}");
         sb.AppendLine("            }");
+        WriteCallerCancellationCatch(sb, method);
         sb.AppendLine("            catch (global::System.Exception __ex)");
         sb.AppendLine("            {");
         sb.AppendLine("                __lastEx = __ex;");
         if (method.CircuitBreaker is not null)
             sb.AppendLine($"                {method.CircuitBreakerSlot!.FieldName}.OnFailure(__ex);");
+        // RetryOnException and the Exception overload of DelayHint run in the catch block, which
+        // is outside the try it guards: an exception they throw reaches the caller unchanged.
+        if (method.RetryOnExceptionMethod is not null)
+            sb.AppendLine($"                if (!{method.RetryOnExceptionMethod}(__ex)) break;");
+        var delay = $"{retry}.GetBackoffMs(__attempt)";
+        if (method.ExceptionDelayHintMethod is not null)
+        {
+            sb.AppendLine($"                var __hint = {method.ExceptionDelayHintMethod}(__ex);");
+            delay = $"{retry}.GetDelayMs(__attempt, __hint)";
+        }
         if (hasTotalTimeout)
-            sb.AppendLine("                if (__totalCts.IsCancellationRequested) break;");
+            WriteTotalTimeoutExit(sb, method, "                ");
         sb.AppendLine($"                if (__attempt == {retry}.MaxAttempts - 1) break;");
-        if (method.IsAsync)
-        {
-            var delayToken = hasTotalTimeout ? ", __totalCts.Token" : "";
-            sb.AppendLine($"                await global::System.Threading.Tasks.Task.Delay({retry}.GetBackoffMs(__attempt){delayToken}).ConfigureAwait(false);");
-        }
-        else
-        {
-            sb.AppendLine($"                global::System.Threading.Thread.Sleep({retry}.GetBackoffMs(__attempt));");
-        }
+        WriteBackoffWait(sb, method, hasTotalTimeout, delay, "                ");
         sb.AppendLine("            }");
         sb.AppendLine("        }");
         sb.AppendLine("        // All attempts exhausted");
+        WriteRetryExhaustion(sb, method);
+    }
+
+    // Every attempt threw, or RetryOnException declined the last exception.
+    private static void WriteRetryExhaustion(StringBuilder sb, MethodModel method)
+    {
         // NonThrowing on a return type that cannot hold a ResilienceError never reaches the writer:
         // it is ZR0003, or ZR0006 with NonThrowing left off an inherited default method.
         if (method.ReturnsFailureResult)
@@ -315,6 +310,188 @@ internal static class ResilienceWriter
         }
     }
 
+    // [Retry] with a RetryWhen that applies to this Result method. Only the inner call is inside
+    // the try; RetryWhen and the Result DelayHint run after it, and RetryOnException and the
+    // Exception DelayHint in the catch block, so an exception any of them throws reaches the
+    // caller unchanged. A failed Result RetryWhen calls transient is a breaker failure and is
+    // retried; any other returned Result is a breaker success and is returned. When the retries
+    // end on a failed Result, including when the total timeout fires during the wait after it,
+    // that Result is returned unchanged; the caller's own cancellation still throws.
+    private static void WriteResultAwareRetryLoop(StringBuilder sb, MethodModel method, bool hasTotalTimeout)
+    {
+        var retry = method.RetrySlot!.FieldName;
+        var awaitKw = method.IsAsync ? "await " : "";
+        var configKw = method.IsAsync ? ".ConfigureAwait(false)" : "";
+        var breaker = method.CircuitBreaker is null ? null : method.CircuitBreakerSlot!.FieldName;
+        var hasHint = method.ResultDelayHintMethod is not null || method.ExceptionDelayHintMethod is not null;
+
+        sb.AppendLine("        global::System.Exception? __lastEx = null;");
+        sb.AppendLine($"        {method.ResultTypeFqn} __lastResult = default;");
+        sb.AppendLine("        bool __lastWasResult = false;");
+        sb.AppendLine($"        for (int __attempt = 0; __attempt < {retry}.MaxAttempts; __attempt++)");
+        sb.AppendLine("        {");
+        WriteAttemptToken(sb, method, retry, hasTotalTimeout);
+        if (hasHint)
+            sb.AppendLine("            global::System.TimeSpan? __hint = null;");
+        sb.AppendLine("            try");
+        sb.AppendLine("            {");
+        var callArgs = method.HasCancellationToken ? method.ArgumentListWithToken : method.ArgumentList;
+        sb.AppendLine($"                __lastResult = {awaitKw}{InnerCall(method, callArgs)}{configKw};");
+        sb.AppendLine("                __lastWasResult = true;");
+        sb.AppendLine("            }");
+        WriteCallerCancellationCatch(sb, method);
+        sb.AppendLine("            catch (global::System.Exception __ex)");
+        sb.AppendLine("            {");
+        sb.AppendLine("                __lastEx = __ex;");
+        sb.AppendLine("                __lastWasResult = false;");
+        if (breaker is not null)
+            sb.AppendLine($"                {breaker}.OnFailure(__ex);");
+        if (method.RetryOnExceptionMethod is not null)
+            sb.AppendLine($"                if (!{method.RetryOnExceptionMethod}(__ex)) break;");
+        if (method.ExceptionDelayHintMethod is not null)
+            sb.AppendLine($"                __hint = {method.ExceptionDelayHintMethod}(__ex);");
+        sb.AppendLine("            }");
+        sb.AppendLine("            if (__lastWasResult)");
+        sb.AppendLine("            {");
+        sb.AppendLine($"                if (__lastResult.IsSuccess || !{method.RetryWhenMethod}(__lastResult.Error))");
+        sb.AppendLine("                {");
+        if (breaker is not null)
+            sb.AppendLine($"                    {breaker}.OnSuccess();");
+        sb.AppendLine("                    return __lastResult;");
+        sb.AppendLine("                }");
+        if (breaker is not null)
+            sb.AppendLine($"                {breaker}.OnFailure();");
+        if (method.ResultDelayHintMethod is not null)
+            sb.AppendLine($"                __hint = {method.ResultDelayHintMethod}(__lastResult.Error);");
+        sb.AppendLine("            }");
+        if (hasTotalTimeout)
+            WriteTotalTimeoutExit(sb, method, "            ");
+        sb.AppendLine($"            if (__attempt == {retry}.MaxAttempts - 1) break;");
+        var delay = hasHint ? $"{retry}.GetDelayMs(__attempt, __hint)" : $"{retry}.GetBackoffMs(__attempt)";
+        WriteBackoffWait(sb, method, hasTotalTimeout, delay, "            ");
+        sb.AppendLine("        }");
+        sb.AppendLine("        // All attempts exhausted, or a failure that is not retried");
+        sb.AppendLine("        if (__lastWasResult) return __lastResult;");
+        WriteRetryExhaustion(sb, method);
+    }
+
+    // The per-attempt timeout is a runtime value, so the CTS is created only when it is set.
+    // Without a CancellationToken parameter there is nothing to propagate it to; ZR0002 warns
+    // when the attribute asks for one.
+    private static void WriteAttemptToken(StringBuilder sb, MethodModel method, string retry, bool hasTotalTimeout)
+    {
+        if (method.HasCancellationToken)
+        {
+            var outerToken = hasTotalTimeout ? "__totalCts.Token" : method.CancellationTokenParamName!;
+            sb.AppendLine($"            using var __attemptCts = {retry}.PerAttemptTimeoutMs > 0");
+            sb.AppendLine($"                ? global::System.Threading.CancellationTokenSource.CreateLinkedTokenSource({outerToken})");
+            sb.AppendLine("                : null;");
+            sb.AppendLine($"            __attemptCts?.CancelAfter({retry}.PerAttemptTimeoutMs);");
+            sb.AppendLine($"            var __ct = __attemptCts?.Token ?? {outerToken};");
+        }
+        else if (hasTotalTimeout)
+        {
+            sb.AppendLine("            var __ct = __totalCts.Token;");
+        }
+    }
+
+    // The caller's own cancellation is not a failure of the inner call. Caught before the catch
+    // that retries, it is rethrown unchanged: not retried, not counted by the circuit breaker and
+    // not wrapped in ResilienceException. A per-attempt or total timeout leaves the caller's token
+    // untouched, so its OperationCanceledException still reaches the retrying catch.
+    // The single-call path uses it too, at its own indent.
+    private static void WriteCallerCancellationCatch(StringBuilder sb, MethodModel method, string indent = "            ")
+    {
+        if (method.CancellationTokenParamName is not { } callerToken) return;
+        sb.AppendLine($"{indent}catch (global::System.OperationCanceledException) when ({callerToken}.IsCancellationRequested)");
+        sb.AppendLine($"{indent}{{");
+        sb.AppendLine($"{indent}    throw;");
+        sb.AppendLine($"{indent}}}");
+    }
+
+    // Ends the loop when the total-timeout token has fired. That token is linked to the caller's,
+    // so a cancelled caller throws OperationCanceledException first, exactly as the loop without
+    // [Timeout] does. Only the timeout itself ends the loop: the exception-only loop then exits
+    // through exhaustion, and the Result-aware loop returns its last Result.
+    private static void WriteTotalTimeoutExit(StringBuilder sb, MethodModel method, string indent)
+    {
+        if (method.CancellationTokenParamName is null)
+        {
+            sb.AppendLine($"{indent}if (__totalCts.IsCancellationRequested) break;");
+            return;
+        }
+
+        sb.AppendLine($"{indent}if (__totalCts.IsCancellationRequested)");
+        WriteTotalTimeoutBlock(sb, method, indent);
+    }
+
+    // The body that follows a check that the total-timeout token fired.
+    private static void WriteTotalTimeoutBlock(StringBuilder sb, MethodModel method, string indent)
+    {
+        sb.AppendLine($"{indent}{{");
+        if (method.CancellationTokenParamName is { } callerToken)
+            sb.AppendLine($"{indent}    {callerToken}.ThrowIfCancellationRequested();");
+        sb.AppendLine($"{indent}    break;");
+        sb.AppendLine($"{indent}}}");
+    }
+
+    // The wait before the next attempt. It observes the total-timeout token when [Timeout] is
+    // present, and the caller's token otherwise. With [Timeout], the total-timeout token is linked
+    // to the caller's, so either can end the wait: a cancelled caller throws
+    // OperationCanceledException and a fired total timeout ends the loop, never with the wait's own
+    // TaskCanceledException: the exception-only loop then exits through exhaustion, a Failure or a
+    // ResilienceException, and the Result-aware loop returns its last Result. Async awaits
+    // the delay with SuppressThrowing and then checks which one fired. Sync waits on the token's
+    // wait handle, so cancellation interrupts the wait, which Thread.Sleep would not. Without
+    // [Timeout], async Task.Delay throws when the caller's token fires, and Thread.Sleep remains
+    // only when no token can be cancelled.
+    private static void WriteBackoffWait(StringBuilder sb, MethodModel method, bool hasTotalTimeout, string delayExpr, string indent)
+    {
+        var callerToken = method.CancellationTokenParamName;
+        if (method.IsAsync && !hasTotalTimeout)
+        {
+            var tokenArg = callerToken is not null ? $", {callerToken}" : "";
+            sb.AppendLine($"{indent}await global::System.Threading.Tasks.Task.Delay({delayExpr}{tokenArg}).ConfigureAwait(false);");
+            return;
+        }
+
+        if (hasTotalTimeout)
+        {
+            if (method.IsAsync)
+            {
+                // ConfigureAwaitOptions is .NET 8 and later, as is every target of the runtime.
+                sb.AppendLine($"{indent}await global::System.Threading.Tasks.Task.Delay({delayExpr}, __totalCts.Token)");
+                sb.AppendLine($"{indent}    .ConfigureAwait(global::System.Threading.Tasks.ConfigureAwaitOptions.SuppressThrowing);");
+                sb.AppendLine($"{indent}if (__totalCts.IsCancellationRequested)");
+            }
+            else
+            {
+                sb.AppendLine($"{indent}if (__totalCts.Token.WaitHandle.WaitOne({delayExpr}))");
+            }
+            WriteTotalTimeoutBlock(sb, method, indent);
+            return;
+        }
+
+        if (callerToken is not null)
+        {
+            // CanBeCanceled: a token that can never fire has no wait handle worth creating.
+            sb.AppendLine($"{indent}if ({callerToken}.CanBeCanceled)");
+            sb.AppendLine($"{indent}{{");
+            sb.AppendLine($"{indent}    {callerToken}.WaitHandle.WaitOne({delayExpr});");
+            sb.AppendLine($"{indent}    {callerToken}.ThrowIfCancellationRequested();");
+            sb.AppendLine($"{indent}}}");
+            sb.AppendLine($"{indent}else");
+            sb.AppendLine($"{indent}{{");
+            sb.AppendLine($"{indent}    global::System.Threading.Thread.Sleep({delayExpr});");
+            sb.AppendLine($"{indent}}}");
+            return;
+        }
+
+        sb.AppendLine($"{indent}global::System.Threading.Thread.Sleep({delayExpr});");
+    }
+
+    // A catch here, for a Result method or a circuit breaker, first rethrows the caller's own
+    // cancellation, as the retry loop does: it is not a Failure and not a breaker failure.
     private static void WriteSingleCall(StringBuilder sb, MethodModel method, bool hasTotalTimeout)
     {
         var awaitKw = method.IsAsync ? "await " : "";
@@ -344,6 +521,7 @@ internal static class ResilienceWriter
                 sb.AppendLine($"            {method.CircuitBreakerSlot!.FieldName}.OnSuccess();");
             sb.AppendLine($"            {ReturnCaptured(method)}");
             sb.AppendLine("        }");
+            WriteCallerCancellationCatch(sb, method, "        ");
             sb.AppendLine("        catch (global::System.Exception __ex)");
             sb.AppendLine("        {");
             sb.AppendLine("            __lastEx = __ex;");
@@ -360,6 +538,7 @@ internal static class ResilienceWriter
             sb.AppendLine($"            {method.CircuitBreakerSlot!.FieldName}.OnSuccess();");
             sb.AppendLine($"            {ReturnCaptured(method)}");
             sb.AppendLine("        }");
+            WriteCallerCancellationCatch(sb, method, "        ");
             sb.AppendLine("        catch (global::System.Exception __ex)");
             sb.AppendLine("        {");
             sb.AppendLine($"            {method.CircuitBreakerSlot!.FieldName}.OnFailure(__ex);");
