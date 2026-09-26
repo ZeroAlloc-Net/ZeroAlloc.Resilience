@@ -54,12 +54,26 @@ internal sealed class IMyServiceResilienceProxy : global::T.IMyService
                 var __result = await _inner.GetAsync(id, __ct).ConfigureAwait(false);
                 return __result;
             }
+            catch (global::System.OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
             catch (global::System.Exception __ex)
             {
                 __lastEx = __ex;
-                if (__totalCts.IsCancellationRequested) break;
+                if (__totalCts.IsCancellationRequested)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    break;
+                }
                 if (__attempt == _retry.MaxAttempts - 1) break;
-                await global::System.Threading.Tasks.Task.Delay(_retry.GetBackoffMs(__attempt), __totalCts.Token).ConfigureAwait(false);
+                await global::System.Threading.Tasks.Task.Delay(_retry.GetBackoffMs(__attempt), __totalCts.Token)
+                    .ConfigureAwait(global::System.Threading.Tasks.ConfigureAwaitOptions.SuppressThrowing);
+                if (__totalCts.IsCancellationRequested)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    break;
+                }
             }
         }
         // All attempts exhausted
@@ -84,12 +98,26 @@ internal sealed class IMyServiceResilienceProxy : global::T.IMyService
                 await _inner.PostAsync(data, __ct).ConfigureAwait(false);
                 return;
             }
+            catch (global::System.OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
             catch (global::System.Exception __ex)
             {
                 __lastEx = __ex;
-                if (__totalCts.IsCancellationRequested) break;
+                if (__totalCts.IsCancellationRequested)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    break;
+                }
                 if (__attempt == _postAsyncRetry.MaxAttempts - 1) break;
-                await global::System.Threading.Tasks.Task.Delay(_postAsyncRetry.GetBackoffMs(__attempt), __totalCts.Token).ConfigureAwait(false);
+                await global::System.Threading.Tasks.Task.Delay(_postAsyncRetry.GetBackoffMs(__attempt), __totalCts.Token)
+                    .ConfigureAwait(global::System.Threading.Tasks.ConfigureAwaitOptions.SuppressThrowing);
+                if (__totalCts.IsCancellationRequested)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    break;
+                }
             }
         }
         // All attempts exhausted

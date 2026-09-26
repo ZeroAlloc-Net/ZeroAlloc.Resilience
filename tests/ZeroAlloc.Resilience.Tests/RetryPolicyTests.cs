@@ -84,4 +84,70 @@ public class RetryPolicyTests
         var policy = new RetryPolicy(1001, 0, false, 0);
         policy.GetBackoffMs(1000).Should().Be(0);
     }
+
+    [Fact]
+    public void FourArgumentConstructor_HasNoDelayCap() =>
+        new RetryPolicy(3, 100, false, 0).MaxDelayMs.Should().Be(RetryPolicy.MaxBackoffMs);
+
+    [Fact]
+    public void FiveArgumentConstructor_SetsMaxDelayMs() =>
+        new RetryPolicy(3, 100, false, 0, maxDelayMs: 250).MaxDelayMs.Should().Be(250);
+
+    [Fact]
+    public void GetDelayMs_WithoutHint_IsTheBackoff() =>
+        new RetryPolicy(3, 100, false, 0).GetDelayMs(2, null).Should().Be(400);
+
+    [Fact]
+    public void GetDelayMs_Hint_OverridesTheBackoff() =>
+        new RetryPolicy(3, 100, false, 0).GetDelayMs(0, TimeSpan.FromSeconds(2)).Should().Be(2_000);
+
+    [Fact]
+    public void GetDelayMs_Hint_GetsNoJitter()
+    {
+        var policy = new RetryPolicy(3, 100, jitter: true, 0);
+        for (var i = 0; i < 100; i++)
+            policy.GetDelayMs(0, TimeSpan.FromMilliseconds(300)).Should().Be(300);
+    }
+
+    [Fact]
+    public void GetDelayMs_Hint_IsCappedByMaxDelayMs() =>
+        new RetryPolicy(3, 100, false, 0, maxDelayMs: 1_000)
+            .GetDelayMs(0, TimeSpan.FromMinutes(5)).Should().Be(1_000);
+
+    [Fact]
+    public void GetDelayMs_Backoff_IsCappedByMaxDelayMs() =>
+        new RetryPolicy(10, 100, false, 0, maxDelayMs: 1_000).GetDelayMs(5, null).Should().Be(1_000);
+
+    [Fact]
+    public void GetBackoffMs_IsCappedByMaxDelayMs()
+    {
+        var policy = new RetryPolicy(10, 100, jitter: true, 0, maxDelayMs: 1_000);
+        for (var i = 0; i < 100; i++)
+            policy.GetBackoffMs(5).Should().Be(1_000); // 3200 plus jitter, capped
+    }
+
+    [Theory]
+    [InlineData(-5_000)]
+    [InlineData(0)]
+    public void GetDelayMs_NegativeOrZeroHint_IsZero(int hintMs) =>
+        new RetryPolicy(3, 100, false, 0).GetDelayMs(0, TimeSpan.FromMilliseconds(hintMs)).Should().Be(0);
+
+    [Fact]
+    public void GetDelayMs_FractionalHint_RoundsUp() =>
+        new RetryPolicy(3, 100, false, 0).GetDelayMs(0, TimeSpan.FromTicks(10_001)).Should().Be(2);
+
+    [Fact]
+    public void GetDelayMs_HugeHint_NeverOverflows() =>
+        new RetryPolicy(3, 100, false, 0, maxDelayMs: int.MaxValue)
+            .GetDelayMs(0, TimeSpan.MaxValue).Should().Be(RetryPolicy.MaxBackoffMs);
+
+    [Fact]
+    public void RetryAttribute_NewPropertiesDefaultToOff()
+    {
+        var attribute = new RetryAttribute();
+        attribute.RetryWhen.Should().BeNull();
+        attribute.RetryOnException.Should().BeNull();
+        attribute.DelayHint.Should().BeNull();
+        attribute.MaxDelayMs.Should().Be(RetryPolicy.MaxBackoffMs);
+    }
 }

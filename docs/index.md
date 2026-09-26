@@ -69,3 +69,5 @@ services.AddExternalServiceResilience<ExternalServiceImpl>();
 | [ZR0006](diagnostics/ZR0006.md) | Warning | Policy not applied to method |
 | [ZR0007](diagnostics/ZR0007.md) | Error | Interface shape not supported by the resilience generator |
 | [ZR0008](diagnostics/ZR0008.md) | Error | Invalid `ZeroAllocGeneratedAccessibility` value |
+| [ZR0009](diagnostics/ZR0009.md) | Error | Retry member not found or signature mismatch |
+| [ZR0010](diagnostics/ZR0010.md) | Error / Warning | Result-aware retry cannot apply to method |

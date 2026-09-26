@@ -26,6 +26,7 @@ internal static class TestHelper
             .Select(a => MetadataReference.CreateFromFile(a.Location))
             .Cast<MetadataReference>()
             .Append(MetadataReference.CreateFromFile(typeof(RetryAttribute).Assembly.Location))
+            .Append(MetadataReference.CreateFromFile(typeof(ZeroAlloc.Results.Result).Assembly.Location))
             .ToList();
 
         var compilation = CSharpCompilation.Create(
@@ -52,6 +53,7 @@ internal static class TestHelper
             .Select(a => MetadataReference.CreateFromFile(a.Location))
             .Cast<MetadataReference>()
             .Append(MetadataReference.CreateFromFile(typeof(RetryAttribute).Assembly.Location))
+            .Append(MetadataReference.CreateFromFile(typeof(ZeroAlloc.Results.Result).Assembly.Location))
             .ToList();
 
         var compilation = CSharpCompilation.Create(
@@ -104,6 +106,63 @@ internal static class TestHelper
         public TestAnalyzerConfigOptions(IReadOnlyDictionary<string, string> options) => _options = options;
 
         public override bool TryGetValue(string key, out string value) => _options.TryGetValue(key, out value!);
+    }
+
+    /// <summary>
+    /// Runs the generator against <paramref name="source"/> with the same references as
+    /// <see cref="RunAndCompile"/> and returns every diagnostic it reports, warnings included.
+    /// </summary>
+    public static ImmutableArray<Diagnostic> GeneratorDiagnostics(string source)
+    {
+        var compilation = CSharpCompilation.Create(
+            "TestAssembly",
+            new[] { CSharpSyntaxTree.ParseText(source, ParseOptions) },
+            CompileReferences,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+        CSharpGeneratorDriver
+            .Create(new ResilienceGenerator())
+            .WithUpdatedParseOptions(ParseOptions)
+            .RunGeneratorsAndUpdateCompilation(compilation, out _, out var diagnostics);
+        return diagnostics;
+    }
+
+    /// <summary>
+    /// Runs the generator against <paramref name="source"/> with the same references as
+    /// <see cref="RunAndCompile"/> and returns the model of every interface it emits code for,
+    /// for resolution that generated code does not show yet.
+    /// </summary>
+    public static List<ResilienceModel> Models(string source)
+    {
+        var compilation = CSharpCompilation.Create(
+            "TestAssembly",
+            new[] { CSharpSyntaxTree.ParseText(source, ParseOptions) },
+            CompileReferences,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+        var runResult = CSharpGeneratorDriver
+            .Create(
+                new[] { new ResilienceGenerator().AsSourceGenerator() },
+                parseOptions: ParseOptions,
+                driverOptions: new GeneratorDriverOptions(IncrementalGeneratorOutputKind.None, trackIncrementalGeneratorSteps: true))
+            .RunGenerators(compilation)
+            .GetRunResult();
+
+        var models = new List<ResilienceModel>();
+        foreach (var generatorResult in runResult.Results)
+        {
+            if (!generatorResult.TrackedOutputSteps.TryGetValue(WellKnownGeneratorOutputs.SourceOutput, out var steps))
+                continue;
+            foreach (var step in steps)
+            {
+                foreach (var (sourceStep, outputIndex) in step.Inputs)
+                {
+                    if (sourceStep.Outputs[outputIndex].Value is ResilienceModel model)
+                        models.Add(model);
+                }
+            }
+        }
+        return models;
     }
 
     // Runtime framework references only, instead of every assembly loaded in the test domain:

@@ -69,8 +69,11 @@ internal sealed class PolicySlotBuilder
         _                         => "global::ZeroAlloc.Resilience.CircuitBreakerPolicy",
     };
 
+    // The four-argument constructor unless the attribute sets MaxDelayMs, so every interface that
+    // does not use it generates exactly what it did in 3.1.
     public static string Default(RetryConfig c) =>
-        $"new global::ZeroAlloc.Resilience.RetryPolicy({c.MaxAttempts.ToString(CultureInfo.InvariantCulture)}, {c.BackoffMs.ToString(CultureInfo.InvariantCulture)}, {(c.Jitter ? "true" : "false")}, {c.PerAttemptTimeoutMs.ToString(CultureInfo.InvariantCulture)})";
+        $"new global::ZeroAlloc.Resilience.RetryPolicy({c.MaxAttempts.ToString(CultureInfo.InvariantCulture)}, {c.BackoffMs.ToString(CultureInfo.InvariantCulture)}, {(c.Jitter ? "true" : "false")}, {c.PerAttemptTimeoutMs.ToString(CultureInfo.InvariantCulture)}"
+        + (c.MaxDelayMs is { } maxDelayMs ? $", {maxDelayMs.ToString(CultureInfo.InvariantCulture)})" : ")");
 
     public static string Default(TimeoutConfig c) =>
         $"new global::ZeroAlloc.Resilience.TimeoutPolicy({c.TotalMs.ToString(CultureInfo.InvariantCulture)})";

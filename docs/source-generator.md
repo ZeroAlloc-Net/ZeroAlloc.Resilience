@@ -100,13 +100,27 @@ internal sealed class IExternalServiceResilienceProxy : global::T.IExternalServi
                 _circuitBreaker.OnSuccess();
                 return __result;
             }
+            catch (global::System.OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
             catch (global::System.Exception __ex)
             {
                 __lastEx = __ex;
                 _circuitBreaker.OnFailure(__ex);
-                if (__totalCts.IsCancellationRequested) break;
+                if (__totalCts.IsCancellationRequested)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    break;
+                }
                 if (__attempt == _retry.MaxAttempts - 1) break;
-                await global::System.Threading.Tasks.Task.Delay(_retry.GetBackoffMs(__attempt), __totalCts.Token).ConfigureAwait(false);
+                await global::System.Threading.Tasks.Task.Delay(_retry.GetBackoffMs(__attempt), __totalCts.Token)
+                    .ConfigureAwait(global::System.Threading.Tasks.ConfigureAwaitOptions.SuppressThrowing);
+                if (__totalCts.IsCancellationRequested)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    break;
+                }
             }
         }
         // All attempts exhausted
@@ -143,13 +157,27 @@ internal sealed class IExternalServiceResilienceProxy : global::T.IExternalServi
                 _circuitBreaker.OnSuccess();
                 return __result;
             }
+            catch (global::System.OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
             catch (global::System.Exception __ex)
             {
                 __lastEx = __ex;
                 _circuitBreaker.OnFailure(__ex);
-                if (__totalCts.IsCancellationRequested) break;
+                if (__totalCts.IsCancellationRequested)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    break;
+                }
                 if (__attempt == _retry.MaxAttempts - 1) break;
-                await global::System.Threading.Tasks.Task.Delay(_retry.GetBackoffMs(__attempt), __totalCts.Token).ConfigureAwait(false);
+                await global::System.Threading.Tasks.Task.Delay(_retry.GetBackoffMs(__attempt), __totalCts.Token)
+                    .ConfigureAwait(global::System.Threading.Tasks.ConfigureAwaitOptions.SuppressThrowing);
+                if (__totalCts.IsCancellationRequested)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    break;
+                }
             }
         }
         // All attempts exhausted
@@ -388,3 +416,6 @@ dotnet build
 | ZR0004 | Error | A policy attribute property is explicitly set to a value the runtime policy constructor would reject, for example `[Timeout(Ms = 0)]` |
 | ZR0006 | Warning | A policy cannot be applied to a method: an inherited default-implemented method it cannot wrap, which is forwarded without it, or an own method the proxy does not implement, because it has an `object` member's signature or is `sealed`, static or not public |
 | ZR0007 | Error | The interface is generic, not accessible to a top-level class, has a `static abstract` or `static virtual` member, or a policy applies to a method that returns by reference or is async with a `ref`, `out`, `in` or ref struct parameter |
+| ZR0008 | Error | The `ZeroAllocGeneratedAccessibility` MSBuild property is set to a value other than `Public` or `Internal` |
+| ZR0009 | Error | `[Retry]` `RetryWhen`, `RetryOnException` or `DelayHint` names no accessible static method with the required signature on the interface or its base interfaces |
+| ZR0010 | Error or Warning | `RetryWhen`, or a `DelayHint` overload that takes the Result error type, cannot apply to a method: an Error on a method-level `[Retry]`, a Warning for each method an interface-level `[Retry]` skips |

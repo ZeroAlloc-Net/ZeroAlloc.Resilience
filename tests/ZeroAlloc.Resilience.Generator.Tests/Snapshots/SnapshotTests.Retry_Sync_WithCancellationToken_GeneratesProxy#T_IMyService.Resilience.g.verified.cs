@@ -27,7 +27,7 @@ internal sealed class IMyServiceResilienceProxy : global::T.IMyService
         _retry = (policies.Retry ?? throw new global::System.ArgumentException("MyServiceResiliencePolicies.Retry is null.", nameof(policies)));
     }
 
-    public async global::System.Threading.Tasks.ValueTask<string> GetAsync(string id, global::System.Threading.CancellationToken ct)
+    public string Get(string id, global::System.Threading.CancellationToken ct)
     {
         global::System.Exception? __lastEx = null;
         for (int __attempt = 0; __attempt < _retry.MaxAttempts; __attempt++)
@@ -39,7 +39,7 @@ internal sealed class IMyServiceResilienceProxy : global::T.IMyService
             var __ct = __attemptCts?.Token ?? ct;
             try
             {
-                var __result = await _inner.GetAsync(id, __ct).ConfigureAwait(false);
+                var __result = _inner.Get(id, __ct);
                 return __result;
             }
             catch (global::System.OperationCanceledException) when (ct.IsCancellationRequested)
@@ -50,7 +50,36 @@ internal sealed class IMyServiceResilienceProxy : global::T.IMyService
             {
                 __lastEx = __ex;
                 if (__attempt == _retry.MaxAttempts - 1) break;
-                await global::System.Threading.Tasks.Task.Delay(_retry.GetBackoffMs(__attempt), ct).ConfigureAwait(false);
+                if (ct.CanBeCanceled)
+                {
+                    ct.WaitHandle.WaitOne(_retry.GetBackoffMs(__attempt));
+                    ct.ThrowIfCancellationRequested();
+                }
+                else
+                {
+                    global::System.Threading.Thread.Sleep(_retry.GetBackoffMs(__attempt));
+                }
+            }
+        }
+        // All attempts exhausted
+        throw new global::ZeroAlloc.Resilience.ResilienceException(global::ZeroAlloc.Resilience.ResiliencePolicy.Retry, "All retry attempts failed.", __lastEx);
+    }
+
+    public string GetWithoutToken(string id)
+    {
+        global::System.Exception? __lastEx = null;
+        for (int __attempt = 0; __attempt < _retry.MaxAttempts; __attempt++)
+        {
+            try
+            {
+                var __result = _inner.GetWithoutToken(id);
+                return __result;
+            }
+            catch (global::System.Exception __ex)
+            {
+                __lastEx = __ex;
+                if (__attempt == _retry.MaxAttempts - 1) break;
+                global::System.Threading.Thread.Sleep(_retry.GetBackoffMs(__attempt));
             }
         }
         // All attempts exhausted

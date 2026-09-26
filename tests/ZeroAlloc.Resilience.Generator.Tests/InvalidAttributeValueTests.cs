@@ -11,6 +11,7 @@ public class InvalidAttributeValueTests
     [InlineData("[Retry(MaxAttempts = 0)]", "MaxAttempts")]
     [InlineData("[Retry(BackoffMs = -1)]", "BackoffMs")]
     [InlineData("[Retry(PerAttemptTimeoutMs = -1)]", "PerAttemptTimeoutMs")]
+    [InlineData("[Retry(MaxDelayMs = -1)]", "MaxDelayMs")]
     [InlineData("[Timeout(Ms = 0)]", "Ms")]
     [InlineData("[CircuitBreaker(MaxFailures = 0)]", "MaxFailures")]
     [InlineData("[CircuitBreaker(ResetMs = -1)]", "ResetMs")]

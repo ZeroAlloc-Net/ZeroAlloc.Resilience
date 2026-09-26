@@ -40,6 +40,7 @@ The linked token `__totalCts.Token` is passed as the effective `CancellationToke
 
 1. The inner method can observe the timeout normally — it receives a cancellation token that fires at the deadline.
 2. The caller's own cancellation token also fires the linked source — whichever expires first wins.
+3. The proxy tells the two apart: when the caller's own token is what fired, `OperationCanceledException` propagates unchanged instead of being treated as the timeout.
 
 ---
 

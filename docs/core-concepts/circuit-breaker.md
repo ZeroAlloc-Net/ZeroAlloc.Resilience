@@ -70,7 +70,7 @@ if (!_circuitBreaker.CanExecute())
 
 ## Failure and success tracking
 
-The proxy calls `OnFailure` after each failed inner invocation and `OnSuccess` after each success:
+The proxy calls `OnFailure` after each failed inner invocation and `OnSuccess` after each success. The caller's own cancellation is not a failure: it is rethrown as `OperationCanceledException` before `OnFailure` runs, so the breaker never counts it.
 
 ```csharp
 // Generated inside retry loop:

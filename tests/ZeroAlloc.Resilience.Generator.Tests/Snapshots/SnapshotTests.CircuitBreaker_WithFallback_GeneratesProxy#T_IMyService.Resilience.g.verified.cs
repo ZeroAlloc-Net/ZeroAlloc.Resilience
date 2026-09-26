@@ -40,6 +40,10 @@ internal sealed class IMyServiceResilienceProxy : global::T.IMyService
             _circuitBreaker.OnSuccess();
             return __result;
         }
+        catch (global::System.OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (global::System.Exception __ex)
         {
             _circuitBreaker.OnFailure(__ex);
@@ -59,6 +63,10 @@ internal sealed class IMyServiceResilienceProxy : global::T.IMyService
             var __result = await _inner.FetchFallback(id, ct).ConfigureAwait(false);
             _circuitBreaker.OnSuccess();
             return __result;
+        }
+        catch (global::System.OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
         }
         catch (global::System.Exception __ex)
         {

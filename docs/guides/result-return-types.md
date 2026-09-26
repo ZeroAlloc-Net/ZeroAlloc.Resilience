@@ -70,6 +70,10 @@ try
     var __result = await _inner.FetchSafeAsync(id, ct).ConfigureAwait(false);
     return __result;
 }
+catch (global::System.OperationCanceledException) when (ct.IsCancellationRequested)
+{
+    throw;
+}
 catch (global::System.Exception __ex)
 {
     __lastEx = __ex;
@@ -98,7 +102,19 @@ return global::ZeroAlloc.Results.Result<string, global::ZeroAlloc.Resilience.Res
 
 `PolicyType` is the `ResiliencePolicy` member name. For a single call that threw, it is `Timeout` when the total timeout fired. Otherwise it names the policy guarding the call: `CircuitBreaker`, else `Timeout`, else `RateLimit`.
 
-A Result returned by the inner call, failed or successful, is always passed through unchanged. Only a thrown exception is retried.
+Without `RetryWhen`, a Result returned by the inner call, failed or successful, is passed through unchanged, and only a thrown exception is retried. With `RetryWhen`, see [Retrying failed Results](#retrying-failed-results).
+
+---
+
+## Caller cancellation
+
+`OperationCanceledException` from the caller's own `CancellationToken` now propagates unchanged: on every method that has `[Retry]`, and on the single call, without `[Retry]`, that has `[Timeout]` or `[CircuitBreaker]`. It is not retried, not counted as a circuit-breaker failure, and not turned into a Result or `ResilienceException`.
+
+This means a Result method under `[Timeout]` or `[CircuitBreaker]` that used to return `Failure("Timeout")` or `Failure("CircuitBreaker")` on caller cancellation now throws `OperationCanceledException` instead. **This is a behaviour change**: code that inspected the returned Result to detect caller cancellation must now catch the exception.
+
+In 3.1.0 and earlier, without `[Timeout]`, a cancelled caller waited out every backoff, the loop retried with a cancelled token until the attempts ran out, and the call ended with `ResilienceException`, or, for a Result return type, a `Failure` built from the cancellation. With `[Timeout]`, because the total-timeout token is linked to the caller's, cancelling the caller looked exactly like the total timeout firing: the loop broke at once, without waiting out the backoff, and still ended the same way. A single call under `[Timeout]` or `[CircuitBreaker]` behaved identically, and the circuit breaker's `OnFailure` was called for the caller's own cancellation — it no longer is.
+
+See [Retry: Caller cancellation](../core-concepts/retry.md#caller-cancellation) for the full rules.
 
 ---
 
@@ -108,7 +124,7 @@ For `Result<T, E>` with an `E` other than `ResilienceError`, such as `HttpError`
 
 | Policy | Supported | Behaviour |
 |---|---|---|
-| `[Retry]` | yes | A returned Result, failed or successful, is returned unchanged. A thrown exception is retried. If every attempt throws, there is no Result to return, and `ResilienceException` with `Policy = Retry` is thrown, as for a non-Result method. |
+| `[Retry]` | yes | A successful Result is returned unchanged. A failed Result is returned unchanged, unless `RetryWhen` calls it transient: then it is retried, and when every attempt ends that way the last failed Result is returned. A thrown exception is retried. If the last attempt threw, there is no Result to return, and `ResilienceException` with `Policy = Retry` is thrown, as for a non-Result method. |
 | `[Timeout]` | yes | The timeout cancels the token passed to the inner call. Whatever the inner call returns is passed through. If it throws, the exception propagates, or is retried under `[Retry]`. |
 | `[CircuitBreaker(Fallback = ...)]` | yes | While the circuit is open, the fallback's Result is returned. |
 | `[CircuitBreaker]` without `Fallback` | no, [ZR0003](../diagnostics/ZR0003.md) | An open circuit has no Result to return. |
@@ -129,7 +145,35 @@ public interface IJevApi
 }
 ```
 
-Returned failures such as an HTTP 429 are not retried yet, because the retry loop reacts only to exceptions. Retrying on selected failed Results is tracked in [#142](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/142).
+---
+
+## Retrying failed Results
+
+A failed Result is retried when `[Retry]` names a `RetryWhen` predicate that calls it transient. `DelayHint` can take the wait from the failure, such as the server's `Retry-After`:
+
+```csharp
+using ZeroAlloc.Rest;
+using ZeroAlloc.Results;
+
+[Retry(MaxAttempts = 4, BackoffMs = 500, MaxDelayMs = 30_000,
+       RetryWhen = nameof(IsTransient), DelayHint = nameof(RetryAfter))]
+[Timeout(Ms = 60_000)]
+public interface IJevApi
+{
+    ValueTask<Result<ModelList, HttpError>> ModelsAsync(CancellationToken ct);
+
+    static bool IsTransient(HttpError error) =>
+        error.StatusCode is HttpStatusCode.TooManyRequests or >= HttpStatusCode.InternalServerError;
+
+    static TimeSpan? RetryAfter(HttpError error) => error.GetRetryAfter();
+}
+```
+
+`HttpError.GetRetryAfter()` is in ZeroAlloc.Rest 2.1.0 and later. A 429 with `Retry-After: 2` waits two seconds, capped at `MaxDelayMs`, and a 422 is returned at once. When every attempt returns a transient failure, the last failed Result is returned unchanged. If the total timeout fires during a wait, the last failed Result is returned too. Always set `MaxDelayMs` when `DelayHint` reads a server header this way: `GetRetryAfter()` itself clamps only at `int.MaxValue` seconds.
+
+A transient failed Result counts as a circuit-breaker failure, and a non-transient one as a success, because the service answered. A storm of 529 "Overloaded" responses therefore opens the circuit.
+
+The predicate and the hints run outside the `try` that guards the inner call. An exception they throw reaches the caller unchanged and is never retried. See [Retry](../core-concepts/retry.md#retrying-failed-results) for the full rules.
 
 ---
 

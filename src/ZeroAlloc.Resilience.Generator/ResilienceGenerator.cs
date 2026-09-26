@@ -10,7 +10,7 @@ using System.Linq;
 using System.Threading;
 
 [Generator]
-public sealed class ResilienceGenerator : IIncrementalGenerator
+public sealed partial class ResilienceGenerator : IIncrementalGenerator
 {
     private const string RetryFqn          = "ZeroAlloc.Resilience.RetryAttribute";
     private const string TimeoutFqn        = "ZeroAlloc.Resilience.TimeoutAttribute";
@@ -128,6 +128,8 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
             break;
         }
 
+        var compilation = ctx.SemanticModel.Compilation;
+
         var retryAttr          = GetAttribute(iface, RetryFqn);
         var timeoutAttr        = GetAttribute(iface, TimeoutFqn);
         var rateLimitAttr      = GetAttribute(iface, RateLimitFqn);
@@ -178,6 +180,9 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
         ValidateAttributeValues(diagnosticsBuilder, timeoutAttr, TimeoutRules, iface.Name, ifaceLocation);
         ValidateAttributeValues(diagnosticsBuilder, rateLimitAttr, RateLimitRules, iface.Name, ifaceLocation);
         ValidateAttributeValues(diagnosticsBuilder, circuitBreakerAttr, CircuitBreakerRules, iface.Name, ifaceLocation);
+        // ZR0009: the interface-level [Retry] names, reported once at the attribute.
+        var retryLookup = new RetryMemberLookup(iface, compilation);
+        ValidateRetryMemberNames(diagnosticsBuilder, retryAttr, retryLookup, errorTypeDisplay: null, ifaceLocation);
 
         var interfacePolicies = ImmutableArray.Create(retryAttr, timeoutAttr, rateLimitAttr, circuitBreakerAttr);
 
@@ -277,10 +282,12 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
             var hasCt = member.Parameters.Any(static p =>
                 string.Equals(p.Type.ToDisplayString(), "System.Threading.CancellationToken", StringComparison.Ordinal));
 
+            // Escaped, like every emitted parameter reference: the generated code names it in
+            // CreateLinkedTokenSource, the caller-cancellation filter and the backoff wait.
             var ctParamName = member.Parameters
                 .FirstOrDefault(static p =>
                     string.Equals(p.Type.ToDisplayString(), "System.Threading.CancellationToken", StringComparison.Ordinal))
-                ?.Name;
+                is { } ctParam ? EscapedName(ctParam) : null;
 
             // The fallback name comes from the CircuitBreakerAttribute on the method or the
             // interface. Fallback is intentionally excluded from CircuitBreakerConfig (it is a
@@ -327,6 +334,15 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
             var resultTypeFqn = resultKind == ResultKind.None
                 ? null
                 : resultType!.ToDisplayString(FqnFormat);
+            var errorType = ResultErrorType(resultType, resultKind, compilation);
+
+            // ZR0009 for the method's own [Retry], at the attribute. An inherited method's
+            // attribute belongs to the base interface, which validates it itself.
+            if (entry.IsOwn)
+            {
+                ValidateRetryMemberNames(diagnosticsBuilder, ownRetryAttr, retryLookup,
+                    errorType?.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat), location);
+            }
 
             // ZR0003: a policy that rejects a call without calling the inner service has to
             // return a failure, and it cannot build one for a foreign error type. Rejections are
@@ -421,6 +437,17 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
                     "Remove NonThrowing, or return Result<T, ResilienceError> or UnitResult<ResilienceError>"));
             }
 
+            // What RetryWhen, RetryOnException and DelayHint resolve to for this method. ZR0010 is
+            // reported for the interface's own methods and for inherited ones under the
+            // interface's [Retry]; an inherited method's own [Retry] is the base interface's to
+            // report.
+            var retryMembers = retry is null
+                ? RetryMembers.None
+                : ResolveRetryMembers(diagnosticsBuilder, retryLookup, member, retry, errorType,
+                    methodLevel: ownRetry is not null,
+                    report: entry.IsOwn || ownRetry is null,
+                    location);
+
             var argListWithToken = Arguments(member.Parameters, replaceCancellationToken: true);
 
             // No slot for a policy left off above.
@@ -463,7 +490,11 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
                 ExplicitInterface: entry.ExplicitInterface,
                 ExplicitConstraintClauses: explicitConstraintClauses,
                 HidesObjectMember: hidesObjectMember,
-                HelperName: declarationIndex == 1 ? member.Name : member.Name + declarationIndex.ToString(CultureInfo.InvariantCulture)));
+                HelperName: declarationIndex == 1 ? member.Name : member.Name + declarationIndex.ToString(CultureInfo.InvariantCulture),
+                RetryWhenMethod: retryMembers.RetryWhen,
+                RetryOnExceptionMethod: retryMembers.RetryOnException,
+                ResultDelayHintMethod: retryMembers.ResultDelayHint,
+                ExceptionDelayHintMethod: retryMembers.ExceptionDelayHint));
         }
 
         // Properties, indexers and events never carry a resilience policy — only methods do — so
@@ -781,10 +812,13 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
         _ => "",
     };
 
-    private static string EscapedName(IParameterSymbol parameter) =>
-        Microsoft.CodeAnalysis.CSharp.SyntaxFacts.GetKeywordKind(parameter.Name) != Microsoft.CodeAnalysis.CSharp.SyntaxKind.None
-            ? "@" + parameter.Name
-            : parameter.Name;
+    private static string EscapedName(IParameterSymbol parameter) => EscapeIdentifier(parameter.Name);
+
+    // "@checked" for a name that is a C# keyword.
+    private static string EscapeIdentifier(string name) =>
+        Microsoft.CodeAnalysis.CSharp.SyntaxFacts.GetKeywordKind(name) != Microsoft.CodeAnalysis.CSharp.SyntaxKind.None
+            ? "@" + name
+            : name;
 
     // "<T, TOut>" or "".
     private static string TypeParameterList(IMethodSymbol method) =>
@@ -1100,7 +1134,11 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
             BackoffMs: GetInt(attr, "BackoffMs", 200),
             Jitter: GetBool(attr, "Jitter", false),
             PerAttemptTimeoutMs: GetInt(attr, "PerAttemptTimeoutMs", 0),
-            NonThrowing: GetBool(attr, "NonThrowing", false));
+            NonThrowing: GetBool(attr, "NonThrowing", false),
+            MaxDelayMs: TryGetInt(attr, "MaxDelayMs", out var maxDelayMs) ? maxDelayMs : null,
+            RetryWhen: GetString(attr, "RetryWhen"),
+            RetryOnException: GetString(attr, "RetryOnException"),
+            DelayHint: GetString(attr, "DelayHint"));
     }
 
     private static TimeoutConfig? ParseTimeout(AttributeData? attr)
@@ -1181,7 +1219,8 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
     private static readonly ImmutableArray<AttributeRule> RetryRules = ImmutableArray.Create(
         new AttributeRule("MaxAttempts", 1, Exclusive: false, "at least 1"),
         new AttributeRule("BackoffMs", 0, Exclusive: false, "at least 0"),
-        new AttributeRule("PerAttemptTimeoutMs", 0, Exclusive: false, "at least 0"));
+        new AttributeRule("PerAttemptTimeoutMs", 0, Exclusive: false, "at least 0"),
+        new AttributeRule("MaxDelayMs", 0, Exclusive: false, "at least 0"));
 
     private static readonly ImmutableArray<AttributeRule> TimeoutRules = ImmutableArray.Create(
         new AttributeRule("Ms", 0, Exclusive: true, "greater than 0"));
@@ -1207,9 +1246,7 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
     {
         if (attr is null) return;
 
-        var location = attr.ApplicationSyntaxReference is { } syntaxRef
-            ? Location.Create(syntaxRef.SyntaxTree, syntaxRef.Span)
-            : fallbackLocation;
+        var location = AttributeLocation(attr, fallbackLocation);
         var attributeDisplay = AttributeDisplayName(attr);
 
         foreach (var rule in rules)
@@ -1223,6 +1260,13 @@ public sealed class ResilienceGenerator : IIncrementalGenerator
                 attributeDisplay, memberName, rule.Property, rule.RuleText, value));
         }
     }
+
+    // Where the attribute is written, falling back to the member's own location when there is no
+    // syntax reference, such as for an attribute read from metadata.
+    private static Location? AttributeLocation(AttributeData attr, Location? fallbackLocation) =>
+        attr.ApplicationSyntaxReference is { } syntaxRef
+            ? Location.Create(syntaxRef.SyntaxTree, syntaxRef.Span)
+            : fallbackLocation;
 
     // "RetryAttribute" -> "[Retry]"
     private static string AttributeDisplayName(AttributeData attr)

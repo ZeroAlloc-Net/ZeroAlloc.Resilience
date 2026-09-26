@@ -23,4 +23,8 @@
     <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="5.9.0" PrivateAssets="all" />
     <PackageReference Include="ZeroAlloc.Pipeline.Generators" Version="0.1.6" PrivateAssets="all" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- The tests read the parsed model for resolution the generated code does not show. -->
+    <InternalsVisibleTo Include="ZeroAlloc.Resilience.Generator.Tests" />
+  </ItemGroup>
 </Project>

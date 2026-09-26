@@ -65,6 +65,7 @@ Full methodology + self-benchmark: [docs/performance.md](https://github.com/Zero
 | Circuit breaker | Closed → Open → HalfOpen FSM backed by `ZeroAlloc.StateMachine` (concurrent CAS) |
 | Fallback | Method called when circuit is open — same signature, no allocation |
 | `Result<T>` support | Return `Result<T>` to get failures without exceptions |
+| Result-aware retry | `RetryWhen` retries the failed Results you call transient; `DelayHint` honours `Retry-After`, capped by `MaxDelayMs` |
 | Method-level overrides | Any attribute on a method shadows the interface-level config for that method |
 | DI integration | Generated `Add{Service}Resilience<TImpl>()` extension registers the implementation, a `{Service}ResiliencePolicies` singleton, and the proxy |
 
@@ -96,6 +97,11 @@ Each policy runs before the inner call is even attempted. If the rate limiter re
 | `BackoffMs` | `int` | `200` | Base backoff ms; actual = `BackoffMs * 2^attempt` |
 | `Jitter` | `bool` | `false` | Add up to 50% random jitter to prevent thundering-herd |
 | `PerAttemptTimeoutMs` | `int` | `0` | Per-attempt cancellation timeout; 0 = disabled |
+| `NonThrowing` | `bool` | `false` | Asserts a `ResilienceError` Result return type |
+| `RetryWhen` | `string?` | `null` | Static `bool M(E error)`: retry the failed Results it returns `true` for; a transient one is a breaker failure, any other a success |
+| `RetryOnException` | `string?` | `null` | Static `bool M(Exception exception)`: `false` stops the retries |
+| `DelayHint` | `string?` | `null` | Static `TimeSpan? M(E error)` and/or `TimeSpan? M(Exception exception)`: the next wait, without jitter |
+| `MaxDelayMs` | `int` | no cap | Longest wait between attempts, backoff or hint |
 
 ### `[Timeout]`
 
@@ -184,6 +190,9 @@ catch (ResilienceException ex) when (ex.Policy == ResiliencePolicy.CircuitBreake
 | [ZR0004](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/diagnostics/ZR0004.md) | Error | Invalid policy attribute value |
 | [ZR0006](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/diagnostics/ZR0006.md) | Warning | Policy not applied to method |
 | [ZR0007](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/diagnostics/ZR0007.md) | Error | Interface shape not supported by the resilience generator |
+| [ZR0008](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/diagnostics/ZR0008.md) | Error | Invalid `ZeroAllocGeneratedAccessibility` value |
+| [ZR0009](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/diagnostics/ZR0009.md) | Error | Retry member not found or signature mismatch |
+| [ZR0010](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/diagnostics/ZR0010.md) | Error / Warning | Result-aware retry cannot apply to method |
 
 ---
 

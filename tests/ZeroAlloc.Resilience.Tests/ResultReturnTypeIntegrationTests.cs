@@ -195,7 +195,7 @@ public class ResultReturnTypeIntegrationTests
 
         result.IsFailure.Should().BeTrue();
         result.Error.Should().Be(new HttpError(429));
-        inner.CallCount.Should().Be(1, "a returned failure is not retried until RetryWhen exists, see #142");
+        inner.CallCount.Should().Be(1, "without RetryWhen a returned failure is passed through, not retried");
     }
 
     [Fact]

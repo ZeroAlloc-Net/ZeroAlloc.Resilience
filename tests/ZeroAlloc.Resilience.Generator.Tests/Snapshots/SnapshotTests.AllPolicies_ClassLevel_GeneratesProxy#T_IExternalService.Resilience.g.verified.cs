@@ -63,13 +63,27 @@ internal sealed class IExternalServiceResilienceProxy : global::T.IExternalServi
                 _circuitBreaker.OnSuccess();
                 return __result;
             }
+            catch (global::System.OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
             catch (global::System.Exception __ex)
             {
                 __lastEx = __ex;
                 _circuitBreaker.OnFailure(__ex);
-                if (__totalCts.IsCancellationRequested) break;
+                if (__totalCts.IsCancellationRequested)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    break;
+                }
                 if (__attempt == _retry.MaxAttempts - 1) break;
-                await global::System.Threading.Tasks.Task.Delay(_retry.GetBackoffMs(__attempt), __totalCts.Token).ConfigureAwait(false);
+                await global::System.Threading.Tasks.Task.Delay(_retry.GetBackoffMs(__attempt), __totalCts.Token)
+                    .ConfigureAwait(global::System.Threading.Tasks.ConfigureAwaitOptions.SuppressThrowing);
+                if (__totalCts.IsCancellationRequested)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    break;
+                }
             }
         }
         // All attempts exhausted
@@ -103,13 +117,27 @@ internal sealed class IExternalServiceResilienceProxy : global::T.IExternalServi
                 _circuitBreaker.OnSuccess();
                 return __result;
             }
+            catch (global::System.OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
             catch (global::System.Exception __ex)
             {
                 __lastEx = __ex;
                 _circuitBreaker.OnFailure(__ex);
-                if (__totalCts.IsCancellationRequested) break;
+                if (__totalCts.IsCancellationRequested)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    break;
+                }
                 if (__attempt == _retry.MaxAttempts - 1) break;
-                await global::System.Threading.Tasks.Task.Delay(_retry.GetBackoffMs(__attempt), __totalCts.Token).ConfigureAwait(false);
+                await global::System.Threading.Tasks.Task.Delay(_retry.GetBackoffMs(__attempt), __totalCts.Token)
+                    .ConfigureAwait(global::System.Threading.Tasks.ConfigureAwaitOptions.SuppressThrowing);
+                if (__totalCts.IsCancellationRequested)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    break;
+                }
             }
         }
         // All attempts exhausted

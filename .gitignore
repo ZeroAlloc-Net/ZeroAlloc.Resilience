@@ -480,3 +480,6 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# GeneratorSnapshot writes these next to a snapshot that does not match
+*.received.*

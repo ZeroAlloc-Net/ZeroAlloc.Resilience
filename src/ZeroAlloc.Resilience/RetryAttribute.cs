@@ -26,4 +26,34 @@ public sealed class RetryAttribute : Attribute
     /// asserts the return type.
     /// </summary>
     public bool NonThrowing { get; init; } = false;
+
+    /// <summary>
+    /// The name of a static method <c>bool M(E error)</c> on the interface or a base interface,
+    /// where <c>E</c> is the error type of the method's Result. A failed Result it returns
+    /// <see langword="true"/> for is retried, and counts as a circuit-breaker failure; one it
+    /// returns <see langword="false"/> for is returned at once. Default: <see langword="null"/>,
+    /// a returned Result is never retried.
+    /// </summary>
+    public string? RetryWhen { get; init; }
+
+    /// <summary>
+    /// The name of a static method <c>bool M(Exception exception)</c> on the interface or a base
+    /// interface. A thrown exception it returns <see langword="false"/> for ends the retries.
+    /// Default: <see langword="null"/>, every exception is retried.
+    /// </summary>
+    public string? RetryOnException { get; init; }
+
+    /// <summary>
+    /// The name of a static method, or overload set, on the interface or a base interface:
+    /// <c>TimeSpan? M(E error)</c> for a failed Result and <c>TimeSpan? M(Exception exception)</c>
+    /// for a thrown exception. A non-null result replaces the backoff before the next attempt,
+    /// without jitter. Default: <see langword="null"/>.
+    /// </summary>
+    public string? DelayHint { get; init; }
+
+    /// <summary>
+    /// The longest wait between attempts in milliseconds, for the backoff and a delay hint alike.
+    /// Default: <see cref="RetryPolicy.MaxBackoffMs"/>, no cap.
+    /// </summary>
+    public int MaxDelayMs { get; init; } = RetryPolicy.MaxBackoffMs;
 }
