@@ -193,8 +193,23 @@ public class RetryAttemptTests
         Zr(source).Should().BeEmpty();
     }
 
+    // A plain base interface is not a resilience target: an interface with [Retry] that inherits
+    // it, possibly in another project, retries the method, so ZR0011 would be a false positive.
     [Fact]
-    public void BaseInterfaceMethod_UnderADerivedInterfaceWithoutRetry_ReportsZR0011()
+    public void BaseInterfaceWithoutAttributes_ReportsNothing()
+    {
+        var source = Usings + """
+            public interface IBase
+            {
+                ValueTask<string> GetAsync([RetryAttempt] int? retryCount, CancellationToken ct);
+            }
+            """;
+
+        Zr(source).Should().BeEmpty();
+    }
+
+    [Fact]
+    public void BaseInterfaceWithoutAttributes_UnderADerivedInterfaceWithoutRetry_ReportsNothing()
     {
         var source = Usings + """
             public interface IBase
@@ -205,20 +220,27 @@ public class RetryAttemptTests
             public interface IApi : IBase { }
             """;
 
-        Zr(source).Should().ContainSingle().Which.Id.Should().Be("ZR0011");
+        Zr(source).Should().BeEmpty();
     }
 
-    [Fact]
-    public void InterfaceWithoutAnyPolicy_ReportsZR0011()
+    [Theory]
+    [InlineData("[Timeout(Ms = 1000)]", "", "", "interface-level timeout")]
+    [InlineData("[CircuitBreaker]", "", "", "interface-level circuit breaker")]
+    [InlineData("", "[RateLimit(MaxPerSecond = 10)]", "", "method-level policy")]
+    [InlineData("", "", "[Retry] ValueTask<string> OtherAsync(CancellationToken ct);", "another method has [Retry]")]
+    public void ResilienceInterfaceMissingRetry_ReportsZR0011(string interfaceAttribute, string methodAttribute, string otherMember, string because)
     {
-        var source = Usings + """
+        var source = Usings + $$"""
+            {{interfaceAttribute}}
             public interface IApi
             {
-                ValueTask<string> GetAsync([RetryAttempt] int retryCount, CancellationToken ct);
+                {{otherMember}}
+                {{methodAttribute}}
+                ValueTask<string> GetAsync([RetryAttempt] int? retryCount, CancellationToken ct);
             }
             """;
 
-        Zr(source).Should().ContainSingle().Which.Id.Should().Be("ZR0011");
+        Zr(source).Should().ContainSingle(because).Which.Id.Should().Be("ZR0011");
     }
 
     [Fact]
@@ -276,9 +298,10 @@ public class RetryAttemptTests
     public void UnsupportedParameterWithoutRetry_ReportsBoth()
     {
         var source = Usings + """
+            [Timeout(Ms = 1000)]
             public interface IApi
             {
-                string Get([RetryAttempt] string retryCount);
+                string Get([RetryAttempt] string retryCount, CancellationToken ct);
             }
             """;
 

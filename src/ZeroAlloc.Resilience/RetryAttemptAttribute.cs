@@ -9,8 +9,8 @@ namespace ZeroAlloc.Resilience;
 /// <remarks>
 /// The number counts the attempts of one call to the proxy, so concurrent calls never share it.
 /// Combined with a ZeroAlloc.Rest <c>[Header]</c> parameter, it puts a retry-count header on the
-/// wire. The generator reports ZR0011 when no <see cref="RetryAttribute"/> applies to the method,
-/// and ZR0012 when the parameter is not an <see cref="int"/> or <c>int?</c> passed by value.
+/// wire. The generator reports ZR0011 when the method's interface has resilience attributes but
+/// no <see cref="RetryAttribute"/> applies to the method, and ZR0012 when the parameter is not an <see cref="int"/> or <c>int?</c> passed by value.
 /// </remarks>
 [AttributeUsage(AttributeTargets.Parameter, AllowMultiple = false, Inherited = false)]
 public sealed class RetryAttemptAttribute : Attribute

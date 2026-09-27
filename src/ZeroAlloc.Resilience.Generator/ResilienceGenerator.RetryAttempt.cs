@@ -60,8 +60,8 @@ public sealed partial class ResilienceGenerator
                 $"'{methodName}' is not a method of an interface, and only the resilience proxy of an interface passes the retry attempt",
                 "Put [RetryAttempt] on the interface method, or remove it");
         }
-        else if (GetAttribute(method, RetryFqn) is null && GetAttribute(method.ContainingType, RetryFqn) is null
-                 && !HasDerivedInterfaceWithRetry(ctx.SemanticModel.Compilation, method.ContainingType, ct))
+        else if (IsResilienceTarget(method) && GetAttribute(method, RetryFqn) is null
+                 && GetAttribute(method.ContainingType, RetryFqn) is null)
         {
             withoutRetry = Diagnostic.Create(ResilienceDiagnostics.RetryAttemptWithoutRetry, location,
                 name, methodName,
@@ -72,36 +72,21 @@ public sealed partial class ResilienceGenerator
         return new RetryAttemptFindings(unsupported, withoutRetry);
     }
 
-    // An interface-level [Retry] also applies to the methods an interface inherits, in that
-    // interface's proxy. So a [RetryAttempt] on a base interface's method takes effect when an
-    // interface in this compilation that inherits it has [Retry]. Only searched when neither the
-    // method nor its own interface has [Retry], which is the rare case. A derived interface in
-    // another assembly cannot be seen from here.
-    private static bool HasDerivedInterfaceWithRetry(Compilation compilation, INamedTypeSymbol declaring, CancellationToken ct)
-    {
-        var target = declaring.OriginalDefinition;
-        var pending = new System.Collections.Generic.Stack<INamespaceOrTypeSymbol>();
-        pending.Push(compilation.Assembly.GlobalNamespace);
-        while (pending.Count > 0)
-        {
-            ct.ThrowIfCancellationRequested();
-            foreach (var member in pending.Pop().GetMembers())
-            {
-                if (member is INamespaceSymbol ns)
-                {
-                    pending.Push(ns);
-                    continue;
-                }
-                if (member is not INamedTypeSymbol type) continue;
-                pending.Push(type);
-                if (type.TypeKind == TypeKind.Interface
-                    && GetAttribute(type, RetryFqn) is not null
-                    && type.AllInterfaces.Any(i => SymbolEqualityComparer.Default.Equals(i.OriginalDefinition, target)))
-                    return true;
-            }
-        }
-        return false;
-    }
+    // Only an interface the generator builds a proxy for is checked: one with a policy attribute
+    // on the interface or on a method it declares, the same test the proxy pipeline uses. Its
+    // proxy runs a method without [Retry] once, so [RetryAttempt] there certainly has no effect.
+    // A plain interface is typically a base meant to be inherited: an interface with [Retry] that
+    // inherits it, in this project or another one, retries the method in its own proxy, where
+    // [RetryAttempt] takes effect. Nothing here can see every such interface, so a plain
+    // interface is never reported.
+    private static bool IsResilienceTarget(IMethodSymbol method) =>
+        HasPolicyAttribute(method.ContainingType) || HasOwnMethodPolicy(method.ContainingType);
+
+    private static bool HasPolicyAttribute(ISymbol symbol) =>
+        GetAttribute(symbol, RetryFqn) is not null
+        || GetAttribute(symbol, TimeoutFqn) is not null
+        || GetAttribute(symbol, RateLimitFqn) is not null
+        || GetAttribute(symbol, CircuitBreakerFqn) is not null;
 
     // An int or int? passed by value: the only parameters the retry number can be passed to.
     // Anything else is ZR0012, and the proxy passes the caller's argument to it unchanged.

@@ -200,9 +200,9 @@ What the number counts:
 - **Every attempt of the call.** An attempt the inner method throws from and a failed Result `RetryWhen` calls transient both count. Sync and async methods, `void`, `Task`, `ValueTask` and `Result` return types all work the same way.
 - **With other policies.** None of them calls the inner method more than once per attempt, and there is no hedging policy. The rate limiter and the circuit breaker are checked once, before the first attempt; the circuit breaker records every attempt, but does not stop a retry loop that is already running. `[Timeout]` wraps the whole loop and `PerAttemptTimeoutMs` each attempt; neither restarts the count. So the number is always the retry number of the whole call.
 - **The fallback.** When the circuit is open, the `Fallback` method runs instead of any attempt. It gets the first attempt's value, `null` or `0`, for each `[RetryAttempt]` parameter, never the caller's argument.
-- **Without `[Retry]`.** When no `[Retry]` applies to the method, the attribute has no effect and the caller's argument is passed on unchanged. The generator reports [ZR0011](../diagnostics/ZR0011.md). A parameter that is not an `int` or `int?` passed by value is [ZR0012](../diagnostics/ZR0012.md).
-
-A method inherited from a base interface is retried in the proxy of a derived interface that has `[Retry]`, so its `[RetryAttempt]` takes effect there. Two inherited declarations of one method that differ in `[RetryAttempt]` are implemented separately, each with its own.
+- **Without `[Retry]`.** When no `[Retry]` applies to the method, the attribute has no effect and the caller's argument is passed on unchanged. On an interface with resilience attributes, the generator reports [ZR0011](../diagnostics/ZR0011.md). A parameter that is not an `int` or `int?` passed by value is [ZR0012](../diagnostics/ZR0012.md).
+- **Inherited methods.** A method declared in a base interface without resilience attributes is retried in the proxy of a derived interface that has `[Retry]`, so its `[RetryAttempt]` takes effect there. The base interface is not reported.
+- **Declarations that differ in `[RetryAttempt]`.** When two base interfaces declare the same method and only one marks a parameter with `[RetryAttempt]`, the proxy implements each declaration separately. A call through each interface gets that declaration's own behaviour: the retry number where it is marked, the caller's argument where it is not.
 
 ---
 
