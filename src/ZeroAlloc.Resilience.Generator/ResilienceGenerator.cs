@@ -153,6 +153,7 @@ public sealed partial class ResilienceGenerator : IIncrementalGenerator
             if (entry.Symbol is IMethodSymbol member)
                 ParseMethod(state, entry, member);
         }
+        state.ReportUnusedInterfaceRethrowDeclined();
 
         var passthroughMembers = CollectPassthroughMembers(forwarded);
 
@@ -320,6 +321,7 @@ public sealed partial class ResilienceGenerator : IIncrementalGenerator
         {
             ValidateRetryMemberNames(state.Diagnostics, method.OwnRetryAttr, state.RetryLookup,
                 method.ErrorType?.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat), method.Location);
+            ValidateOwnRethrowDeclined(state, method);
         }
 
         // ZR0003: a policy that rejects a call without calling the inner service has to
@@ -333,6 +335,33 @@ public sealed partial class ResilienceGenerator : IIncrementalGenerator
         method.NonThrowingUnbuildable = method.Retry?.NonThrowing == true && method.ResultKind != ResultKind.ResilienceError;
         method.Unwrappable = UnwrappableReason(method.IsAsync, method.HasByRefOrRefLikeParameter, method.ReturnsByRef);
     }
+
+    // ZR0013 for the method's own [Retry(RethrowDeclined = true)], at the attribute: without
+    // RetryOnException nothing is declined, and a method that returns failures never throws.
+    private static void ValidateOwnRethrowDeclined(InterfaceParse state, MethodParse method)
+    {
+        if (method.OwnRetry is not { RethrowDeclined: true } own) return;
+        var name = method.Member.Name;
+        if (own.RetryOnException is null)
+            ReportRethrowDeclinedHasNoEffect(state.Diagnostics, method.OwnRetryAttr!, method.Location, name, NoRetryOnException);
+        else if (ReturnsFailures(method.ResultKind))
+            ReportRethrowDeclinedHasNoEffect(state.Diagnostics, method.OwnRetryAttr!, method.Location, name,
+                ("it returns a failure instead of throwing, for a declined exception too", "Remove RethrowDeclined"));
+    }
+
+    private static readonly (string Reason, string Advice) NoRetryOnException =
+        ("the [Retry] has no RetryOnException, so no exception is ever declined",
+         "Set RetryOnException, or remove RethrowDeclined");
+
+    // The Result shapes whose failure the proxy builds, so it never throws; the same test as
+    // MethodModel.ReturnsFailureResult.
+    private static bool ReturnsFailures(ResultKind kind) =>
+        kind is ResultKind.StringError or ResultKind.ResilienceError;
+
+    private static void ReportRethrowDeclinedHasNoEffect(ImmutableArray<Diagnostic>.Builder diagnostics,
+        AttributeData attr, Location? fallbackLocation, string target, (string Reason, string Advice) why) =>
+        diagnostics.Add(Diagnostic.Create(ResilienceDiagnostics.RethrowDeclinedHasNoEffect,
+            AttributeLocation(attr, fallbackLocation), target, why.Reason, why.Advice));
 
     // Before 3.0 an inherited method with a default body was not forwarded: its default
     // body ran. A policy that cannot be applied to it without an error is left off, with a
@@ -433,6 +462,12 @@ public sealed partial class ResilienceGenerator : IIncrementalGenerator
         // reported for the interface's own methods and for inherited ones under the
         // interface's [Retry]; an inherited method's own [Retry] is the base interface's to
         // report.
+        if (method.OwnRetry is null && method.Retry is not null)
+        {
+            if (ReturnsFailures(method.ResultKind)) state.ClassRetryFailureMethods++;
+            else state.ClassRetryThrowingMethods++;
+        }
+
         var retryMembers = method.Retry is null
             ? RetryMembers.None
             : ResolveRetryMembers(state.Diagnostics, state.RetryLookup, member, method.Retry, method.ErrorType,

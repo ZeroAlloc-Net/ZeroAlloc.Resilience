@@ -133,6 +133,8 @@ public interface IOrdersApi
 - **The circuit breaker counts a declined exception as a failure** either way.
 - **Without `RetryOnException`,** nothing is declined and `RethrowDeclined` has no effect.
 
+Where `RethrowDeclined = true` can have no effect, [ZR0013](../diagnostics/ZR0013.md) warns: on a `[Retry]` without `RetryOnException`, on a method-level `[Retry]` of a method that returns failures, and on an interface-level `[Retry]` whose methods all do.
+
 > **Next major:** the next major version of ZeroAlloc.Resilience makes rethrowing the default, because the wrapper reports "All retry attempts failed" when no retry happened. Set `RethrowDeclined = true` now to get that behaviour ahead of the change.
 
 ---

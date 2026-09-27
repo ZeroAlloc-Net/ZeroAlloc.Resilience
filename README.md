@@ -194,6 +194,7 @@ catch (ResilienceException ex) when (ex.Policy == ResiliencePolicy.CircuitBreake
 | [ZR0008](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/diagnostics/ZR0008.md) | Error | Invalid `ZeroAllocGeneratedAccessibility` value |
 | [ZR0009](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/diagnostics/ZR0009.md) | Error | Retry member not found or signature mismatch |
 | [ZR0010](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/diagnostics/ZR0010.md) | Error / Warning | Result-aware retry cannot apply to method |
+| [ZR0013](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/diagnostics/ZR0013.md) | Warning | RethrowDeclined has no effect |
 
 ---
 

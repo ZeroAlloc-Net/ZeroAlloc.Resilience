@@ -419,3 +419,4 @@ dotnet build
 | ZR0008 | Error | The `ZeroAllocGeneratedAccessibility` MSBuild property is set to a value other than `Public` or `Internal` |
 | ZR0009 | Error | `[Retry]` `RetryWhen`, `RetryOnException` or `DelayHint` names no accessible static method with the required signature on the interface or its base interfaces |
 | ZR0010 | Error or Warning | `RetryWhen`, or a `DelayHint` overload that takes the Result error type, cannot apply to a method: an Error on a method-level `[Retry]`, a Warning for each method an interface-level `[Retry]` skips |
+| ZR0013 | Warning | `[Retry(RethrowDeclined = true)]` has no effect: the `[Retry]` has no `RetryOnException`, or every method it applies to returns a failure instead of throwing |

@@ -111,4 +111,17 @@ internal static class ResilienceDiagnostics
         category: Category,
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
+
+    /// <summary>
+    /// ZR0013 — [Retry(RethrowDeclined = true)] can have no effect: the [Retry] has no
+    /// RetryOnException, or every method it applies to returns a failure instead of throwing
+    /// (Warning).
+    /// </summary>
+    public static readonly DiagnosticDescriptor RethrowDeclinedHasNoEffect = new(
+        id: "ZR0013",
+        title: "RethrowDeclined has no effect",
+        messageFormat: "[Retry] RethrowDeclined = true has no effect on '{0}', because {1}. {2}.",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true);
 }
