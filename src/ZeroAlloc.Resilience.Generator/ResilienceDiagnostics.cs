@@ -111,4 +111,28 @@ internal static class ResilienceDiagnostics
         category: Category,
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
+
+    /// <summary>
+    /// ZR0011 — A parameter has [RetryAttempt], but no [Retry] applies to its method, so the
+    /// attribute has no effect (Warning).
+    /// </summary>
+    public static readonly DiagnosticDescriptor RetryAttemptWithoutRetry = new(
+        id: "ZR0011",
+        title: "[RetryAttempt] has no effect without [Retry]",
+        messageFormat: "[RetryAttempt] on parameter '{0}' of '{1}' has no effect, because {2}. {3}.",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true);
+
+    /// <summary>
+    /// ZR0012 — A [RetryAttempt] parameter is not an int or int? passed by value, so the proxy
+    /// cannot pass the retry number to it (Error).
+    /// </summary>
+    public static readonly DiagnosticDescriptor RetryAttemptUnsupportedParameter = new(
+        id: "ZR0012",
+        title: "[RetryAttempt] parameter type not supported",
+        messageFormat: "[RetryAttempt] on parameter '{0}' of '{1}' requires an 'int' or 'int?' parameter passed by value, but it is '{2}'",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
 }

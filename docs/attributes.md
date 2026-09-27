@@ -6,7 +6,7 @@ sidebar_position: 3
 
 # Attributes
 
-All attributes target `Interface` and `Method`. Method-level declarations shadow interface-level ones entirely for that method — they are not additive.
+The policy attributes target `Interface` and `Method`; `[RetryAttempt]` targets a parameter. Method-level declarations shadow interface-level ones entirely for that method — they are not additive.
 
 ## [Retry]
 
@@ -23,6 +23,10 @@ All attributes target `Interface` and `Method`. Method-level declarations shadow
 | `MaxDelayMs` | `int` | no cap | Longest wait between attempts, backoff or hint |
 
 The named methods are static methods of the interface or a base interface; see [Retry](core-concepts/retry.md#what-triggers-a-retry).
+
+## [RetryAttempt]
+
+Targets a parameter. On an `int` or `int?` parameter of a method under `[Retry]`, the proxy passes the retry number instead of the caller's argument: `null`, `1`, `2`, … for `int?`, and `0`, `1`, `2`, … for `int`. See [Passing the attempt number to the inner call](core-concepts/retry.md#passing-the-attempt-number-to-the-inner-call).
 
 ## [Timeout]
 

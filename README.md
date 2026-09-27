@@ -66,6 +66,7 @@ Full methodology + self-benchmark: [docs/performance.md](https://github.com/Zero
 | Fallback | Method called when circuit is open — same signature, no allocation |
 | `Result<T>` support | Return `Result<T>` to get failures without exceptions |
 | Result-aware retry | `RetryWhen` retries the failed Results you call transient; `DelayHint` honours `Retry-After`, capped by `MaxDelayMs` |
+| Retry attempt number | `[RetryAttempt]` on an `int?` or `int` parameter passes the retry number to the inner call, for a retry-count header |
 | Method-level overrides | Any attribute on a method shadows the interface-level config for that method |
 | DI integration | Generated `Add{Service}Resilience<TImpl>()` extension registers the implementation, a `{Service}ResiliencePolicies` singleton, and the proxy |
 
@@ -102,6 +103,8 @@ Each policy runs before the inner call is even attempted. If the rate limiter re
 | `RetryOnException` | `string?` | `null` | Static `bool M(Exception exception)`: `false` stops the retries |
 | `DelayHint` | `string?` | `null` | Static `TimeSpan? M(E error)` and/or `TimeSpan? M(Exception exception)`: the next wait, without jitter |
 | `MaxDelayMs` | `int` | no cap | Longest wait between attempts, backoff or hint |
+
+`[RetryAttempt]` on an `int?` or `int` parameter of a method under `[Retry]` passes the retry number instead of the caller's argument: `null`, `1`, `2`, … for `int?`, and `0`, `1`, `2`, … for `int`.
 
 ### `[Timeout]`
 
@@ -193,6 +196,8 @@ catch (ResilienceException ex) when (ex.Policy == ResiliencePolicy.CircuitBreake
 | [ZR0008](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/diagnostics/ZR0008.md) | Error | Invalid `ZeroAllocGeneratedAccessibility` value |
 | [ZR0009](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/diagnostics/ZR0009.md) | Error | Retry member not found or signature mismatch |
 | [ZR0010](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/diagnostics/ZR0010.md) | Error / Warning | Result-aware retry cannot apply to method |
+| [ZR0011](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/diagnostics/ZR0011.md) | Warning | `[RetryAttempt]` has no effect without `[Retry]` |
+| [ZR0012](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/diagnostics/ZR0012.md) | Error | `[RetryAttempt]` parameter type not supported |
 
 ---
 
