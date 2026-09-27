@@ -71,3 +71,5 @@ services.AddExternalServiceResilience<ExternalServiceImpl>();
 | [ZR0008](diagnostics/ZR0008.md) | Error | Invalid `ZeroAllocGeneratedAccessibility` value |
 | [ZR0009](diagnostics/ZR0009.md) | Error | Retry member not found or signature mismatch |
 | [ZR0010](diagnostics/ZR0010.md) | Error / Warning | Result-aware retry cannot apply to method |
+| [ZR0011](diagnostics/ZR0011.md) | Warning | `[RetryAttempt]` has no effect without `[Retry]` |
+| [ZR0012](diagnostics/ZR0012.md) | Error | `[RetryAttempt]` parameter type not supported |

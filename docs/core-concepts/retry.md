@@ -165,6 +165,47 @@ The wait observes the total-timeout token when `[Timeout]` is present, and the c
 
 ---
 
+## Passing the attempt number to the inner call
+
+`[RetryAttempt]` marks an `int` or `int?` parameter of a method under `[Retry]`. The generated proxy ignores the caller's argument for it and passes the retry number of the current attempt instead:
+
+| Parameter type | First attempt | First retry | Second retry | … |
+|---|---|---|---|---|
+| `int?` | `null` | `1` | `2` | … |
+| `int` | `0` | `1` | `2` | … |
+
+`int?` suits a header or query value that must be absent on the first attempt. Combined with ZeroAlloc.Rest's `[Header]`, it sends a retry-count header, such as the `X-TypeSafe-Retry-Count` header TypeSafe's SDK sends:
+
+```csharp
+[Retry(MaxAttempts = 3)]
+public interface ITypeSafeApi
+{
+    [Post("v1/systemone")]
+    ValueTask<Result<SystemOneResponse, JevError>> EvaluateAsync(
+        [Body] SystemOneRequest body,
+        [Header("Authorization")] string authorization,
+        [Header("X-TypeSafe-Retry-Count")] [RetryAttempt] int? retryCount,
+        CancellationToken ct);
+}
+
+// The caller's value is ignored; pass null.
+var response = await api.EvaluateAsync(request, authorization, retryCount: null, ct);
+```
+
+For the header to be left out on the first attempt, ZeroAlloc.Rest must omit a header whose value is `null`. It does once ZeroAlloc-Net/ZeroAlloc.Rest#354 ships in ZeroAlloc.Rest 2.2.0; 2.1.0 and earlier send the header with an empty value on the first attempt.
+
+What the number counts:
+
+- **One call.** The number is the retry loop's own counter, a local of the generated method, so concurrent calls to one proxy never share it. A new call starts again at the first attempt.
+- **Every attempt of the call.** An attempt the inner method throws from and a failed Result `RetryWhen` calls transient both count. Sync and async methods, `void`, `Task`, `ValueTask` and `Result` return types all work the same way.
+- **With other policies.** None of them calls the inner method more than once per attempt, and there is no hedging policy. The rate limiter and the circuit breaker are checked once, before the first attempt; the circuit breaker records every attempt, but does not stop a retry loop that is already running. `[Timeout]` wraps the whole loop and `PerAttemptTimeoutMs` each attempt; neither restarts the count. So the number is always the retry number of the whole call.
+- **The fallback.** When the circuit is open, the `Fallback` method runs instead of any attempt. It gets the first attempt's value, `null` or `0`, for each `[RetryAttempt]` parameter, never the caller's argument.
+- **Without `[Retry]`.** When no `[Retry]` applies to the method, the attribute has no effect and the caller's argument is passed on unchanged. On an interface with resilience attributes, the generator reports [ZR0011](../diagnostics/ZR0011.md). A parameter that is not an `int` or `int?` passed by value is [ZR0012](../diagnostics/ZR0012.md).
+- **Inherited methods.** A method declared in a base interface without resilience attributes is retried in the proxy of a derived interface that has `[Retry]`, so its `[RetryAttempt]` takes effect there. The base interface is not reported.
+- **Declarations that differ in `[RetryAttempt]`.** When two base interfaces declare the same method and only one marks a parameter with `[RetryAttempt]`, the proxy implements each declaration separately. A call through each interface gets that declaration's own behaviour: the retry number where it is marked, the caller's argument where it is not.
+
+---
+
 ## Caller cancellation
 
 When the caller's `CancellationToken` is cancelled, the proxy throws `OperationCanceledException`. The caller's cancellation is not retried, not counted as a circuit-breaker failure, and not wrapped in `ResilienceException`. The backoff wait observes the caller's token, so a cancelled caller does not wait out the backoff. A per-attempt or total timeout is not the caller's cancellation: it is still retried, or ends the loop, as described above.

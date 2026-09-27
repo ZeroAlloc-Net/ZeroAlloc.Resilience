@@ -208,4 +208,48 @@ public class SnapshotTests
             """;
         TestHelper.Verify<ResilienceGenerator>(source);
     }
+
+    // #198: [RetryAttempt] parameters get the retry number, int? and int, sync and async.
+    [Fact]
+    public void RetryAttempt_NullableAndInt_GeneratesProxy()
+    {
+        var source = """
+            using System.Threading;
+            using System.Threading.Tasks;
+            using ZeroAlloc.Resilience;
+            namespace T;
+            [Retry(MaxAttempts = 3, BackoffMs = 100)]
+            public interface IApi
+            {
+                ValueTask<string> GetAsync(string id, [RetryAttempt] int? retryCount, CancellationToken ct);
+                void Send([RetryAttempt] int attempt);
+            }
+            """;
+        TestHelper.Verify<ResilienceGenerator>(source);
+    }
+
+    // #198: [RetryAttempt] with Result-aware retry, a total timeout and a circuit breaker whose
+    // fallback gets the first attempt's value.
+    [Fact]
+    public void RetryAttempt_ResultAwareWithTimeoutAndCircuitBreaker_GeneratesProxy()
+    {
+        var source = """
+            using System.Threading;
+            using System.Threading.Tasks;
+            using ZeroAlloc.Resilience;
+            using ZeroAlloc.Results;
+            namespace T;
+            public sealed class HttpError { public int Status { get; init; } }
+            [Retry(MaxAttempts = 3, BackoffMs = 100, RetryWhen = nameof(IsTransient))]
+            [Timeout(Ms = 5000)]
+            [CircuitBreaker(MaxFailures = 5, ResetMs = 1000, Fallback = nameof(FallbackAsync))]
+            public interface IApi
+            {
+                ValueTask<Result<string, HttpError>> GetAsync([RetryAttempt] int? retryCount, CancellationToken ct);
+                ValueTask<Result<string, HttpError>> FallbackAsync(int? retryCount, CancellationToken ct);
+                static bool IsTransient(HttpError error) => error.Status == 503;
+            }
+            """;
+        TestHelper.Verify<ResilienceGenerator>(source);
+    }
 }

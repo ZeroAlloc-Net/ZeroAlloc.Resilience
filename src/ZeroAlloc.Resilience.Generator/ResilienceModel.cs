@@ -122,7 +122,15 @@ internal sealed record MethodModel(
     string? RetryWhenMethod = null,
     string? RetryOnExceptionMethod = null,
     string? ResultDelayHintMethod = null,
-    string? ExceptionDelayHintMethod = null
+    string? ExceptionDelayHintMethod = null,
+    // The arguments of the inner call inside the retry loop when a parameter has [RetryAttempt]:
+    // the CancellationToken replaced as in ArgumentListWithToken, and each [RetryAttempt]
+    // parameter replaced by the retry number read from __attempt. Null without [RetryAttempt].
+    string? RetryArgumentList = null,
+    // The arguments of the fallback call when a parameter has [RetryAttempt]: each [RetryAttempt]
+    // parameter gets the first attempt's value, since the caller's argument is never passed on.
+    // Null without [RetryAttempt].
+    string? FallbackArgumentList = null
 )
 {
     // Methods returning a Result whose failure the generator can build, sync or async, return
