@@ -39,7 +39,6 @@ public sealed partial class ResilienceGenerator : IIncrementalGenerator
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
-#pragma warning disable EPS06 // IncrementalValuesProvider is a struct; hidden copies are unavoidable in the incremental pipeline API
         var candidates = context.SyntaxProvider.CreateSyntaxProvider(
             predicate: static (node, _) => IsCandidate(node),
             transform: static (ctx, ct) => TryParse(ctx, ct));
@@ -57,7 +56,6 @@ public sealed partial class ResilienceGenerator : IIncrementalGenerator
             {
                 EmitPublicEntryPoints = pair.Left.IsPublic && pair.Right == GeneratedAccessibilityMode.Public,
             });
-#pragma warning restore EPS06
 
         context.RegisterSourceOutput(accessibility, static (ctx, result) =>
         {
