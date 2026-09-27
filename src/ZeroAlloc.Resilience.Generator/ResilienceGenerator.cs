@@ -118,27 +118,10 @@ public sealed partial class ResilienceGenerator : IIncrementalGenerator
         if (ctx.SemanticModel.GetDeclaredSymbol(ctx.Node, ct) is not INamedTypeSymbol iface)
             return null;
 
-        // Several parts of a partial interface can pass the predicate; only the first one emits,
-        // otherwise every part adds a source with the same hint name.
-        foreach (var reference in iface.DeclaringSyntaxReferences)
-        {
-            var declaration = reference.GetSyntax(ct);
-            if (!IsCandidate(declaration)) continue;
-            if (declaration != ctx.Node) return null;
-            break;
-        }
+        if (!IsFirstCandidatePart(iface, ctx.Node, ct))
+            return null;
 
-        var compilation = ctx.SemanticModel.Compilation;
-
-        var retryAttr          = GetAttribute(iface, RetryFqn);
-        var timeoutAttr        = GetAttribute(iface, TimeoutFqn);
-        var rateLimitAttr      = GetAttribute(iface, RateLimitFqn);
-        var circuitBreakerAttr = GetAttribute(iface, CircuitBreakerFqn);
-
-        var classRetry          = ParseRetry(retryAttr);
-        var classTimeout        = ParseTimeout(timeoutAttr);
-        var classRateLimit      = ParseRateLimit(rateLimitAttr);
-        var classCircuitBreaker = ParseCircuitBreaker(circuitBreakerAttr);
+        var state = new InterfaceParse(iface, ctx.SemanticModel.Compilation);
 
         // Every member the proxy forwards: the interface's own members first, in declaration
         // order, then the inherited ones, then the explicit implementations.
@@ -147,16 +130,8 @@ public sealed partial class ResilienceGenerator : IIncrementalGenerator
         // Skip interfaces with no policy attributes of their own: none on the interface and none
         // on a method it declares. A policy on an inherited method alone does not make a proxy:
         // the base interface that declares it gets its own.
-        if (classRetry is null && classTimeout is null && classRateLimit is null && classCircuitBreaker is null)
-        {
-            var anyMethodPolicy = iface.GetMembers()
-                .OfType<IMethodSymbol>()
-                .Any(m => GetAttribute(m, RetryFqn) is not null
-                       || GetAttribute(m, TimeoutFqn) is not null
-                       || GetAttribute(m, RateLimitFqn) is not null
-                       || GetAttribute(m, CircuitBreakerFqn) is not null);
-            if (!anyMethodPolicy) return null;
-        }
+        if (!state.HasInterfacePolicy && !HasOwnMethodPolicy(iface))
+            return null;
 
         ct.ThrowIfCancellationRequested();
 
@@ -170,382 +145,374 @@ public sealed partial class ResilienceGenerator : IIncrementalGenerator
         if (unsupported.Length > 0)
             return DiagnosticsOnly(iface, ns, unsupported);
 
-        var diagnosticsBuilder = ImmutableArray.CreateBuilder<Diagnostic>();
-        var methodsBuilder     = ImmutableArray.CreateBuilder<MethodModel>();
-        var passthroughBuilder = ImmutableArray.CreateBuilder<PassthroughMethodModel>();
-
-        // ZR0004: interface-level attribute values, reported once (not once per method).
-        var ifaceLocation = iface.Locations.FirstOrDefault();
-        ValidateAttributeValues(diagnosticsBuilder, retryAttr, RetryRules, iface.Name, ifaceLocation);
-        ValidateAttributeValues(diagnosticsBuilder, timeoutAttr, TimeoutRules, iface.Name, ifaceLocation);
-        ValidateAttributeValues(diagnosticsBuilder, rateLimitAttr, RateLimitRules, iface.Name, ifaceLocation);
-        ValidateAttributeValues(diagnosticsBuilder, circuitBreakerAttr, CircuitBreakerRules, iface.Name, ifaceLocation);
-        // ZR0009: the interface-level [Retry] names, reported once at the attribute.
-        var retryLookup = new RetryMemberLookup(iface, compilation);
-        ValidateRetryMemberNames(diagnosticsBuilder, retryAttr, retryLookup, errorTypeDisplay: null, ifaceLocation);
-
-        var interfacePolicies = ImmutableArray.Create(retryAttr, timeoutAttr, rateLimitAttr, circuitBreakerAttr);
-
-        var slots = new PolicySlotBuilder();
-        var classRetrySlot  = classRetry is null ? null : slots.AddInterfaceSlot(PolicyKind.Retry, PolicySlotBuilder.Default(classRetry));
-        var classTimeoutSlot = classTimeout is null ? null : slots.AddInterfaceSlot(PolicyKind.Timeout, PolicySlotBuilder.Default(classTimeout));
-        var classRateSlot   = classRateLimit is null ? null : slots.AddInterfaceSlot(PolicyKind.RateLimiter, PolicySlotBuilder.Default(classRateLimit));
-        var classCbSlot     = classCircuitBreaker is null ? null : slots.AddInterfaceSlot(PolicyKind.CircuitBreaker, PolicySlotBuilder.Default(classCircuitBreaker));
+        state.ValidateInterfaceAttributes();
+        state.AddInterfaceSlots();
 
         // Own methods come first, so their slot names are the ones they had before inherited
         // methods were forwarded; inherited methods are numbered after them.
         foreach (var entry in forwarded)
         {
-            if (entry.Symbol is not IMethodSymbol member) continue;
-
-            var declarationIndex = slots.NextDeclarationIndex(member.Name);
-
-            // An own method the proxy does not forward still takes its declaration number, as in
-            // 2.0.1, so the slot names of the overloads declared after it do not change. A policy
-            // on it does not apply, and ZR0006 says so.
-            if (entry.SlotOnly)
-            {
-                ReportSkippedMethodPolicies(diagnosticsBuilder, iface, member, interfacePolicies);
-                continue;
-            }
-
-            // Effective config: method-level ?? class-level. For an inherited method the class
-            // level is the interface being proxied, not the base interface that declares it.
-            var ownRetryAttr     = GetAttribute(member, RetryFqn);
-            var ownTimeoutAttr   = GetAttribute(member, TimeoutFqn);
-            var ownRateLimitAttr = GetAttribute(member, RateLimitFqn);
-            var ownCbAttr        = GetAttribute(member, CircuitBreakerFqn);
-            var ownRetry     = ParseRetry(ownRetryAttr);
-            var ownTimeout   = ParseTimeout(ownTimeoutAttr);
-            var ownRateLimit = ParseRateLimit(ownRateLimitAttr);
-            var ownCb        = ParseCircuitBreaker(ownCbAttr);
-            var retry     = ownRetry ?? classRetry;
-            var timeout   = ownTimeout ?? classTimeout;
-            var rateLimit = ownRateLimit ?? classRateLimit;
-            var cbConfig  = ownCb ?? classCircuitBreaker;
-
-            // Diagnostics about the interface's own methods point at the method; those about an
-            // inherited method point at the interface being proxied, since the base interface may
-            // be in another assembly and, when it is in this one, reports its own findings.
-            var location = entry.IsOwn ? member.Locations.FirstOrDefault() : ifaceLocation;
-
-            // ZR0004: method-level attribute values, reported once per method (not per interface).
-            // An inherited method's attribute values belong to the base interface, which
-            // validates them itself.
-            if (entry.IsOwn)
-            {
-                ValidateAttributeValues(diagnosticsBuilder, ownRetryAttr, RetryRules, member.Name, location);
-                ValidateAttributeValues(diagnosticsBuilder, ownTimeoutAttr, TimeoutRules, member.Name, location);
-                ValidateAttributeValues(diagnosticsBuilder, ownRateLimitAttr, RateLimitRules, member.Name, location);
-                ValidateAttributeValues(diagnosticsBuilder, ownCbAttr, CircuitBreakerRules, member.Name, location);
-            }
-
-            var paramList = ParameterDeclarations(member.Parameters);
-            var argList = Arguments(member.Parameters, replaceCancellationToken: false);
-            var returnsByRef = member.ReturnsByRef || member.ReturnsByRefReadonly;
-            var returnTypeFqn = ReturnRefPrefix(member.ReturnsByRef, member.ReturnsByRefReadonly) + member.ReturnType.ToDisplayString(FqnFormat);
-            var isAsync = IsAsyncType(member.ReturnType);
-            var typeParameterList = TypeParameterList(member);
-            var constraintClauses = ConstraintClauses(member);
-            var explicitConstraintClauses = ExplicitConstraintClauses(member);
-            // A public member with an object member's name and parameters but another signature,
-            // such as `object ToString()`, hides it: emitted with `new`, as CS0114 and CS0108 ask.
-            var hidesObjectMember = entry.ExplicitInterface.Length == 0 && HidesObjectMember(member);
-
-            // An async method cannot have ref, out, in or ref struct parameters, such as a
-            // ReadOnlySpan<char>, so a method that has them is never wrapped in an async body:
-            // forwarded, it returns the inner task directly.
-            var hasByRefOrRefLikeParameter = member.Parameters.Any(static p => p.RefKind != RefKind.None || p.Type.IsRefLikeType);
-
-            // A method no policy applies to is forwarded to the inner service unchanged.
-            var passthrough = new PassthroughMethodModel(
-                Name: member.Name,
-                ReturnTypeFqn: returnTypeFqn,
-                IsAsync: isAsync && !hasByRefOrRefLikeParameter,
-                ParameterList: paramList,
-                ArgumentList: argList,
-                InnerReceiver: entry.Receiver,
-                TypeParameterList: typeParameterList,
-                ConstraintClauses: constraintClauses,
-                ExplicitImplementations: entry.ExplicitImplementations,
-                ExplicitInterface: entry.ExplicitInterface,
-                ExplicitConstraintClauses: explicitConstraintClauses,
-                ReturnsByRef: returnsByRef,
-                HidesObjectMember: hidesObjectMember);
-
-            if (retry is null && timeout is null && rateLimit is null && cbConfig is null)
-            {
-                passthroughBuilder.Add(passthrough);
-                continue;
-            }
-
-            var hasCt = member.Parameters.Any(static p =>
-                string.Equals(p.Type.ToDisplayString(), "System.Threading.CancellationToken", StringComparison.Ordinal));
-
-            // Escaped, like every emitted parameter reference: the generated code names it in
-            // CreateLinkedTokenSource, the caller-cancellation filter and the backoff wait.
-            var ctParamName = member.Parameters
-                .FirstOrDefault(static p =>
-                    string.Equals(p.Type.ToDisplayString(), "System.Threading.CancellationToken", StringComparison.Ordinal))
-                is { } ctParam ? EscapedName(ctParam) : null;
-
-            // The fallback name comes from the CircuitBreakerAttribute on the method or the
-            // interface. Fallback is intentionally excluded from CircuitBreakerConfig (it is a
-            // generator-time string reference, not a runtime config value), so it is read
-            // directly from the attribute already fetched above. It is looked up among every
-            // public instance method the interface declares or inherits.
-            string? fallbackName = null;
-            var fallbackReceiver = "_inner";
-            var fallbackConfigured = false;
-            var cbAttr = ownCbAttr ?? circuitBreakerAttr;
-            if (cbAttr is not null)
-            {
-                fallbackName = GetString(cbAttr, "Fallback");
-                if (fallbackName is not null)
-                {
-                    var fallback = FindFallback(iface, fallbackName, member);
-                    if (fallback is not null)
-                    {
-                        fallbackConfigured = true;
-                        fallbackReceiver = InnerReceiver(iface, fallback);
-                    }
-                    else if (!entry.IsOwn && ownCbAttr is null)
-                    {
-                        // An interface-level Fallback is written for the methods the interface
-                        // itself declares. An inherited method it does not match gets the circuit
-                        // breaker without a fallback: reporting ZR0001 would turn interfaces that
-                        // compiled before inherited methods were forwarded into errors.
-                        fallbackName = null;
-                    }
-                    else
-                    {
-                        diagnosticsBuilder.Add(Diagnostic.Create(
-                            ResilienceDiagnostics.FallbackNotFound,
-                            location,
-                            fallbackName, iface.Name, member.Name));
-                        fallbackName = null; // suppress emission
-                        fallbackConfigured = true; // ZR0001 already covers the open circuit
-                    }
-                }
-            }
-
-            var resultType = isAsync ? UnwrapAsyncType(member.ReturnType) : member.ReturnType;
-            var resultKind = ClassifyResult(resultType);
-            var resultTypeFqn = resultKind == ResultKind.None
-                ? null
-                : resultType!.ToDisplayString(FqnFormat);
-            var errorType = ResultErrorType(resultType, resultKind, compilation);
-
-            // ZR0009 for the method's own [Retry], at the attribute. An inherited method's
-            // attribute belongs to the base interface, which validates it itself.
-            if (entry.IsOwn)
-            {
-                ValidateRetryMemberNames(diagnosticsBuilder, ownRetryAttr, retryLookup,
-                    errorType?.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat), location);
-            }
-
-            // ZR0003: a policy that rejects a call without calling the inner service has to
-            // return a failure, and it cannot build one for a foreign error type. Rejections are
-            // only reported for async Result<T, E>: sync methods and UnitResult<E> compiled and
-            // threw ResilienceException before #151, and keep doing so.
-            var reportsRejections = resultKind == ResultKind.ForeignError && isAsync
-                && string.Equals(resultType!.Name, "Result", StringComparison.Ordinal);
-            var rateLimitRejects = reportsRejections && rateLimit is not null;
-            var openCircuitRejects = reportsRejections && cbConfig is not null && !fallbackConfigured;
-            var nonThrowingUnbuildable = retry?.NonThrowing == true && resultKind != ResultKind.ResilienceError;
-
-            // Before 3.0 an inherited method with a default body was not forwarded: its default
-            // body ran. A policy that cannot be applied to it without an error is left off, with a
-            // ZR0006 warning, so the interface keeps compiling and the user learns the policy does
-            // not apply. On an own or an abstract method the same policies are errors: ZR0003, or
-            // ZR0007 for a method no policy can wrap at all.
-            var unwrappable = UnwrappableReason(isAsync, hasByRefOrRefLikeParameter, returnsByRef);
-            if (!entry.IsOwn && !member.IsAbstract && (rateLimitRejects || openCircuitRejects || nonThrowingUnbuildable || unwrappable is not null))
-            {
-                if (unwrappable is not null)
-                {
-                    ReportPolicyNotApplied(diagnosticsBuilder, ifaceLocation, iface, member, "its policies", unwrappable,
-                        $"Remove the policy attributes that apply to it, or declare '{member.Name}' on '{iface.Name}' with a signature a policy can wrap");
-                    passthroughBuilder.Add(passthrough);
-                    continue;
-                }
-                if (rateLimitRejects)
-                {
-                    ReportPolicyNotApplied(diagnosticsBuilder, ifaceLocation, iface, member, "[RateLimit]",
-                        $"a rejected call must return a failure, and {UnbuildableError(resultType)}",
-                        PolicyNotAppliedAdvice(iface, member, "[RateLimit]", fromOwnAttribute: ownRateLimit is not null));
-                    rateLimit = null;
-                    rateLimitRejects = false;
-                }
-                if (openCircuitRejects)
-                {
-                    ReportPolicyNotApplied(diagnosticsBuilder, ifaceLocation, iface, member, "[CircuitBreaker]",
-                        $"no Fallback matches it, so an open circuit must return a failure, and {UnbuildableError(resultType)}",
-                        PolicyNotAppliedAdvice(iface, member, "[CircuitBreaker]", fromOwnAttribute: ownCb is not null));
-                    cbConfig = null;
-                    fallbackName = null;
-                    openCircuitRejects = false;
-                }
-                if (nonThrowingUnbuildable)
-                {
-                    ReportPolicyNotApplied(diagnosticsBuilder, ifaceLocation, iface, member, "[Retry(NonThrowing = true)]",
-                        $"exhausted retries must return a ResilienceError failure, but the method returns '{member.ReturnType.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)}'",
-                        PolicyNotAppliedAdvice(iface, member, "[Retry(NonThrowing = true)]", fromOwnAttribute: ownRetry is not null));
-                    retry = null;
-                }
-
-                if (retry is null && timeout is null && rateLimit is null && cbConfig is null)
-                {
-                    passthroughBuilder.Add(passthrough);
-                    continue;
-                }
-            }
-
-            // ZR0007: a method no policy can wrap: async with a ref, out, in or ref struct
-            // parameter, or returning by reference.
-            if (unwrappable is not null)
-            {
-                diagnosticsBuilder.Add(Diagnostic.Create(
-                    ResilienceDiagnostics.UnsupportedInterfaceShape,
-                    location,
-                    iface.Name,
-                    $"'{member.Name}' has a policy, but {unwrappable}"));
-                continue;
-            }
-
-            // ZR0002: timeout but no CancellationToken
-            if ((timeout is not null || retry?.PerAttemptTimeoutMs > 0) && !hasCt)
-            {
-                diagnosticsBuilder.Add(Diagnostic.Create(
-                    ResilienceDiagnostics.NoCancellationToken,
-                    location,
-                    member.Name));
-            }
-
-            if (resultKind == ResultKind.ForeignError)
-            {
-                ReportUnconstructibleError(diagnosticsBuilder, member, location, (INamedTypeSymbol)resultType!,
-                    rateLimitRejects, openCircuitRejects, retry?.NonThrowing == true);
-            }
-            else if (nonThrowingUnbuildable)
-            {
-                // Was a #error directive in the generated code, CS1029. The same check as ZR0003's
-                // NonThrowing case for a foreign error type: the failure cannot be built.
-                diagnosticsBuilder.Add(Diagnostic.Create(ResilienceDiagnostics.UnconstructibleResultError, location,
-                    member.Name, member.ReturnType.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat),
-                    "[Retry] with NonThrowing = true must return a ResilienceError failure when every attempt fails, and this return type cannot hold one",
-                    "Remove NonThrowing, or return Result<T, ResilienceError> or UnitResult<ResilienceError>"));
-            }
-
-            // What RetryWhen, RetryOnException and DelayHint resolve to for this method. ZR0010 is
-            // reported for the interface's own methods and for inherited ones under the
-            // interface's [Retry]; an inherited method's own [Retry] is the base interface's to
-            // report.
-            var retryMembers = retry is null
-                ? RetryMembers.None
-                : ResolveRetryMembers(diagnosticsBuilder, retryLookup, member, retry, errorType,
-                    methodLevel: ownRetry is not null,
-                    report: entry.IsOwn || ownRetry is null,
-                    location);
-
-            var argListWithToken = Arguments(member.Parameters, replaceCancellationToken: true);
-
-            // No slot for a policy left off above.
-            var retrySlot = retry is null ? null : ownRetry is null ? classRetrySlot
-                : slots.AddMethodSlot(member.Name, declarationIndex, PolicyKind.Retry, PolicySlotBuilder.Default(ownRetry));
-            var timeoutSlot = timeout is null ? null : ownTimeout is null ? classTimeoutSlot
-                : slots.AddMethodSlot(member.Name, declarationIndex, PolicyKind.Timeout, PolicySlotBuilder.Default(ownTimeout));
-            var rateSlot = rateLimit is null ? null : ownRateLimit is null ? classRateSlot
-                : slots.AddMethodSlot(member.Name, declarationIndex, PolicyKind.RateLimiter, PolicySlotBuilder.Default(ownRateLimit));
-            var cbSlot = cbConfig is null ? null : ownCb is null ? classCbSlot
-                : slots.AddMethodSlot(member.Name, declarationIndex, PolicyKind.CircuitBreaker, PolicySlotBuilder.Default(ownCb));
-
-            methodsBuilder.Add(new MethodModel(
-                Name: member.Name,
-                ReturnTypeFqn: returnTypeFqn,
-                ResultKind: resultKind,
-                ResultTypeFqn: resultTypeFqn,
-                IsAsync: isAsync,
-                ReturnsValue: isAsync ? resultType is not null : !member.ReturnsVoid,
-                HasCancellationToken: hasCt,
-                CancellationTokenParamName: ctParamName,
-                ParameterList: paramList,
-                ArgumentList: argList,
-                ArgumentListWithToken: argListWithToken,
-                FallbackMethodName: fallbackName,
-                Retry: retry,
-                Timeout: timeout,
-                RateLimit: rateLimit,
-                CircuitBreaker: cbConfig,
-                RetrySlot: retrySlot,
-                TimeoutSlot: timeoutSlot,
-                RateLimiterSlot: rateSlot,
-                CircuitBreakerSlot: cbSlot,
-                InnerReceiver: entry.Receiver,
-                FallbackReceiver: fallbackReceiver,
-                TypeParameterList: typeParameterList,
-                ConstraintClauses: constraintClauses,
-                OutParameterNames: OutParameterNames(member.Parameters),
-                ExplicitImplementations: entry.ExplicitImplementations,
-                ExplicitInterface: entry.ExplicitInterface,
-                ExplicitConstraintClauses: explicitConstraintClauses,
-                HidesObjectMember: hidesObjectMember,
-                HelperName: declarationIndex == 1 ? member.Name : member.Name + declarationIndex.ToString(CultureInfo.InvariantCulture),
-                RetryWhenMethod: retryMembers.RetryWhen,
-                RetryOnExceptionMethod: retryMembers.RetryOnException,
-                ResultDelayHintMethod: retryMembers.ResultDelayHint,
-                ExceptionDelayHintMethod: retryMembers.ExceptionDelayHint));
+            if (entry.Symbol is IMethodSymbol member)
+                ParseMethod(state, entry, member);
         }
 
-        // Properties, indexers and events never carry a resilience policy — only methods do — so
-        // every one the interface declares or inherits is a plain forwarding member.
+        var passthroughMembers = CollectPassthroughMembers(forwarded);
+
+        // Nothing to emit: no member, own or inherited, and nothing to report. An own method the
+        // proxy does not forward, such as a redeclared Equals, still counts, as it did in 2.0.1:
+        // the proxy then implements the interface through object's members and default bodies.
+        if (state.Methods.Count == 0 && state.Passthroughs.Count == 0
+            && passthroughMembers.Length == 0 && state.Diagnostics.Count == 0
+            && !forwarded.Any(static f => f.SlotOnly))
+            return null;
+
+        return BuildModel(state, ns, passthroughMembers);
+    }
+
+    // Several parts of a partial interface can pass the predicate; only the first one emits,
+    // otherwise every part adds a source with the same hint name.
+    private static bool IsFirstCandidatePart(INamedTypeSymbol iface, SyntaxNode node, CancellationToken ct)
+    {
+        foreach (var reference in iface.DeclaringSyntaxReferences)
+        {
+            var declaration = reference.GetSyntax(ct);
+            if (!IsCandidate(declaration)) continue;
+            return declaration == node;
+        }
+        return true;
+    }
+
+    private static bool HasOwnMethodPolicy(INamedTypeSymbol iface) =>
+        iface.GetMembers()
+            .OfType<IMethodSymbol>()
+            .Any(m => GetAttribute(m, RetryFqn) is not null
+                   || GetAttribute(m, TimeoutFqn) is not null
+                   || GetAttribute(m, RateLimitFqn) is not null
+                   || GetAttribute(m, CircuitBreakerFqn) is not null);
+
+    private static ResilienceModel BuildModel(
+        InterfaceParse state,
+        string? ns,
+        ImmutableArray<PassthroughMemberModel> passthroughMembers)
+    {
+        var iface = state.Iface;
+        var isPublic = IsEffectivelyPublic(iface);
+        return new ResilienceModel(
+            Namespace: ns,
+            InterfaceName: iface.Name,
+            InterfaceFqn: iface.ToDisplayString(FqnFormat),
+            IsPublic: isPublic,
+            // Overwritten once the accessibility option is combined in, in Initialize; this default
+            // matches today's behavior (ZeroAllocGeneratedAccessibility unset == Public) for any
+            // code path that reads the model before that combine runs.
+            EmitPublicEntryPoints: isPublic,
+            PoliciesClassName: ServiceName(iface.Name) + "ResiliencePolicies",
+            Slots: state.Slots.ToImmutable(),
+            ClassRetry: state.ClassRetry,
+            ClassTimeout: state.ClassTimeout,
+            ClassRateLimit: state.ClassRateLimit,
+            ClassCircuitBreaker: state.ClassCircuitBreaker,
+            Methods: state.Methods.ToImmutable(),
+            PassthroughMethods: state.Passthroughs.ToImmutable(),
+            PassthroughMembers: passthroughMembers,
+            Diagnostics: state.Diagnostics.ToImmutable());
+    }
+
+    // ── Methods ────────────────────────────────────────────────────────────────
+
+    // One forwarded method: a slot-only entry, a passthrough, or a policy-wrapped method.
+    private static void ParseMethod(InterfaceParse state, ForwardedMember entry, IMethodSymbol member)
+    {
+        var declarationIndex = state.Slots.NextDeclarationIndex(member.Name);
+
+        // An own method the proxy does not forward still takes its declaration number, as in
+        // 2.0.1, so the slot names of the overloads declared after it do not change. A policy
+        // on it does not apply, and ZR0006 says so.
+        if (entry.SlotOnly)
+        {
+            ReportSkippedMethodPolicies(state.Diagnostics, state.Iface, member, state.InterfacePolicies);
+            return;
+        }
+
+        var method = new MethodParse(state, entry, member, declarationIndex);
+
+        // ZR0004: method-level attribute values, reported once per method (not per interface).
+        // An inherited method's attribute values belong to the base interface, which
+        // validates them itself.
+        if (entry.IsOwn)
+        {
+            ValidateAttributeValues(state.Diagnostics, method.OwnRetryAttr, RetryRules, member.Name, method.Location);
+            ValidateAttributeValues(state.Diagnostics, method.OwnTimeoutAttr, TimeoutRules, member.Name, method.Location);
+            ValidateAttributeValues(state.Diagnostics, method.OwnRateLimitAttr, RateLimitRules, member.Name, method.Location);
+            ValidateAttributeValues(state.Diagnostics, method.OwnCbAttr, CircuitBreakerRules, member.Name, method.Location);
+        }
+
+        // A method no policy applies to is forwarded to the inner service unchanged.
+        if (!method.HasPolicy)
+        {
+            state.Passthroughs.Add(method.Passthrough);
+            return;
+        }
+
+        ResolveFallback(state, method);
+        ClassifyMethodResult(state, method);
+
+        if (LeaveOffInheritedDefaultPolicies(state, method))
+        {
+            state.Passthroughs.Add(method.Passthrough);
+            return;
+        }
+
+        if (!ReportMethodDiagnostics(state, method))
+            return;
+
+        state.Methods.Add(BuildMethodModel(state, method));
+    }
+
+    // The fallback name comes from the CircuitBreakerAttribute on the method or the
+    // interface. Fallback is intentionally excluded from CircuitBreakerConfig (it is a
+    // generator-time string reference, not a runtime config value), so it is read
+    // directly from the attribute already fetched. It is looked up among every
+    // public instance method the interface declares or inherits.
+    private static void ResolveFallback(InterfaceParse state, MethodParse method)
+    {
+        var cbAttr = method.OwnCbAttr ?? state.CircuitBreakerAttr;
+        if (cbAttr is null) return;
+
+        method.FallbackName = GetString(cbAttr, "Fallback");
+        if (method.FallbackName is null) return;
+
+        var fallback = FindFallback(state.Iface, method.FallbackName, method.Member);
+        if (fallback is not null)
+        {
+            method.FallbackConfigured = true;
+            method.FallbackReceiver = InnerReceiver(state.Iface, fallback);
+        }
+        else if (!method.Entry.IsOwn && method.OwnCbAttr is null)
+        {
+            // An interface-level Fallback is written for the methods the interface
+            // itself declares. An inherited method it does not match gets the circuit
+            // breaker without a fallback: reporting ZR0001 would turn interfaces that
+            // compiled before inherited methods were forwarded into errors.
+            method.FallbackName = null;
+        }
+        else
+        {
+            state.Diagnostics.Add(Diagnostic.Create(
+                ResilienceDiagnostics.FallbackNotFound,
+                method.Location,
+                method.FallbackName, state.Iface.Name, method.Member.Name));
+            method.FallbackName = null; // suppress emission
+            method.FallbackConfigured = true; // ZR0001 already covers the open circuit
+        }
+    }
+
+    // The Result the method returns, its error type, and which policies cannot build a failure
+    // of it. Also ZR0009 for the method's own [Retry], which needs the error type.
+    private static void ClassifyMethodResult(InterfaceParse state, MethodParse method)
+    {
+        var member = method.Member;
+        method.ResultType = method.IsAsync ? UnwrapAsyncType(member.ReturnType) : member.ReturnType;
+        method.ResultKind = ClassifyResult(method.ResultType);
+        method.ErrorType = ResultErrorType(method.ResultType, method.ResultKind, state.Compilation);
+
+        // ZR0009 for the method's own [Retry], at the attribute. An inherited method's
+        // attribute belongs to the base interface, which validates it itself.
+        if (method.Entry.IsOwn)
+        {
+            ValidateRetryMemberNames(state.Diagnostics, method.OwnRetryAttr, state.RetryLookup,
+                method.ErrorType?.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat), method.Location);
+        }
+
+        // ZR0003: a policy that rejects a call without calling the inner service has to
+        // return a failure, and it cannot build one for a foreign error type. Rejections are
+        // only reported for async Result<T, E>: sync methods and UnitResult<E> compiled and
+        // threw ResilienceException before #151, and keep doing so.
+        var reportsRejections = method.ResultKind == ResultKind.ForeignError && method.IsAsync
+            && string.Equals(method.ResultType!.Name, "Result", StringComparison.Ordinal);
+        method.RateLimitRejects = reportsRejections && method.RateLimit is not null;
+        method.OpenCircuitRejects = reportsRejections && method.CircuitBreaker is not null && !method.FallbackConfigured;
+        method.NonThrowingUnbuildable = method.Retry?.NonThrowing == true && method.ResultKind != ResultKind.ResilienceError;
+        method.Unwrappable = UnwrappableReason(method.IsAsync, method.HasByRefOrRefLikeParameter, method.ReturnsByRef);
+    }
+
+    // Before 3.0 an inherited method with a default body was not forwarded: its default
+    // body ran. A policy that cannot be applied to it without an error is left off, with a
+    // ZR0006 warning, so the interface keeps compiling and the user learns the policy does
+    // not apply. On an own or an abstract method the same policies are errors: ZR0003, or
+    // ZR0007 for a method no policy can wrap at all. True when no policy is left, so the
+    // method is forwarded unchanged.
+    private static bool LeaveOffInheritedDefaultPolicies(InterfaceParse state, MethodParse method)
+    {
+        var member = method.Member;
+        if (method.Entry.IsOwn || member.IsAbstract
+            || !(method.RateLimitRejects || method.OpenCircuitRejects || method.NonThrowingUnbuildable || method.Unwrappable is not null))
+            return false;
+
+        if (method.Unwrappable is not null)
+        {
+            ReportPolicyNotApplied(state.Diagnostics, state.IfaceLocation, state.Iface, member, "its policies", method.Unwrappable,
+                $"Remove the policy attributes that apply to it, or declare '{member.Name}' on '{state.Iface.Name}' with a signature a policy can wrap");
+            return true;
+        }
+        if (method.RateLimitRejects)
+        {
+            ReportPolicyNotApplied(state.Diagnostics, state.IfaceLocation, state.Iface, member, "[RateLimit]",
+                $"a rejected call must return a failure, and {UnbuildableError(method.ResultType)}",
+                PolicyNotAppliedAdvice(state.Iface, member, "[RateLimit]", fromOwnAttribute: method.OwnRateLimit is not null));
+            method.RateLimit = null;
+            method.RateLimitRejects = false;
+        }
+        if (method.OpenCircuitRejects)
+        {
+            ReportPolicyNotApplied(state.Diagnostics, state.IfaceLocation, state.Iface, member, "[CircuitBreaker]",
+                $"no Fallback matches it, so an open circuit must return a failure, and {UnbuildableError(method.ResultType)}",
+                PolicyNotAppliedAdvice(state.Iface, member, "[CircuitBreaker]", fromOwnAttribute: method.OwnCb is not null));
+            method.CircuitBreaker = null;
+            method.FallbackName = null;
+            method.OpenCircuitRejects = false;
+        }
+        if (method.NonThrowingUnbuildable)
+        {
+            ReportPolicyNotApplied(state.Diagnostics, state.IfaceLocation, state.Iface, member, "[Retry(NonThrowing = true)]",
+                $"exhausted retries must return a ResilienceError failure, but the method returns '{member.ReturnType.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)}'",
+                PolicyNotAppliedAdvice(state.Iface, member, "[Retry(NonThrowing = true)]", fromOwnAttribute: method.OwnRetry is not null));
+            method.Retry = null;
+        }
+
+        return !method.HasPolicy;
+    }
+
+    // ZR0007, ZR0002 and ZR0003 for a policy-wrapped method. False when no policy can wrap it,
+    // so it gets no proxy member.
+    private static bool ReportMethodDiagnostics(InterfaceParse state, MethodParse method)
+    {
+        var member = method.Member;
+
+        // ZR0007: a method no policy can wrap: async with a ref, out, in or ref struct
+        // parameter, or returning by reference.
+        if (method.Unwrappable is not null)
+        {
+            state.Diagnostics.Add(Diagnostic.Create(
+                ResilienceDiagnostics.UnsupportedInterfaceShape,
+                method.Location,
+                state.Iface.Name,
+                $"'{member.Name}' has a policy, but {method.Unwrappable}"));
+            return false;
+        }
+
+        // ZR0002: timeout but no CancellationToken
+        if ((method.Timeout is not null || method.Retry?.PerAttemptTimeoutMs > 0) && method.CancellationTokenParamName is null)
+        {
+            state.Diagnostics.Add(Diagnostic.Create(
+                ResilienceDiagnostics.NoCancellationToken,
+                method.Location,
+                member.Name));
+        }
+
+        if (method.ResultKind == ResultKind.ForeignError)
+        {
+            ReportUnconstructibleError(state.Diagnostics, member, method.Location, (INamedTypeSymbol)method.ResultType!,
+                method.RateLimitRejects, method.OpenCircuitRejects, method.Retry?.NonThrowing == true);
+        }
+        else if (method.NonThrowingUnbuildable)
+        {
+            // Was a #error directive in the generated code, CS1029. The same check as ZR0003's
+            // NonThrowing case for a foreign error type: the failure cannot be built.
+            state.Diagnostics.Add(Diagnostic.Create(ResilienceDiagnostics.UnconstructibleResultError, method.Location,
+                member.Name, member.ReturnType.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat),
+                "[Retry] with NonThrowing = true must return a ResilienceError failure when every attempt fails, and this return type cannot hold one",
+                "Remove NonThrowing, or return Result<T, ResilienceError> or UnitResult<ResilienceError>"));
+        }
+        return true;
+    }
+
+    private static MethodModel BuildMethodModel(InterfaceParse state, MethodParse method)
+    {
+        var member = method.Member;
+
+        // What RetryWhen, RetryOnException and DelayHint resolve to for this method. ZR0010 is
+        // reported for the interface's own methods and for inherited ones under the
+        // interface's [Retry]; an inherited method's own [Retry] is the base interface's to
+        // report.
+        var retryMembers = method.Retry is null
+            ? RetryMembers.None
+            : ResolveRetryMembers(state.Diagnostics, state.RetryLookup, member, method.Retry, method.ErrorType,
+                methodLevel: method.OwnRetry is not null,
+                report: method.Entry.IsOwn || method.OwnRetry is null,
+                method.Location);
+
+        var argListWithToken = Arguments(member.Parameters, replaceCancellationToken: true);
+        var slots = MethodSlots(state, method);
+        var passthrough = method.Passthrough;
+
+        return new MethodModel(
+            Name: member.Name,
+            ReturnTypeFqn: passthrough.ReturnTypeFqn,
+            ResultKind: method.ResultKind,
+            ResultTypeFqn: method.ResultKind == ResultKind.None ? null : method.ResultType!.ToDisplayString(FqnFormat),
+            IsAsync: method.IsAsync,
+            ReturnsValue: method.IsAsync ? method.ResultType is not null : !member.ReturnsVoid,
+            HasCancellationToken: method.CancellationTokenParamName is not null,
+            CancellationTokenParamName: method.CancellationTokenParamName,
+            ParameterList: passthrough.ParameterList,
+            ArgumentList: passthrough.ArgumentList,
+            ArgumentListWithToken: argListWithToken,
+            FallbackMethodName: method.FallbackName,
+            Retry: method.Retry,
+            Timeout: method.Timeout,
+            RateLimit: method.RateLimit,
+            CircuitBreaker: method.CircuitBreaker,
+            RetrySlot: slots.Retry,
+            TimeoutSlot: slots.Timeout,
+            RateLimiterSlot: slots.RateLimiter,
+            CircuitBreakerSlot: slots.CircuitBreaker,
+            InnerReceiver: passthrough.InnerReceiver,
+            FallbackReceiver: method.FallbackReceiver,
+            TypeParameterList: passthrough.TypeParameterList,
+            ConstraintClauses: passthrough.ConstraintClauses,
+            OutParameterNames: OutParameterNames(member.Parameters),
+            ExplicitImplementations: passthrough.ExplicitImplementations,
+            ExplicitInterface: passthrough.ExplicitInterface,
+            ExplicitConstraintClauses: passthrough.ExplicitConstraintClauses,
+            HidesObjectMember: passthrough.HidesObjectMember,
+            HelperName: method.DeclarationIndex == 1 ? member.Name : member.Name + method.DeclarationIndex.ToString(CultureInfo.InvariantCulture),
+            RetryWhenMethod: retryMembers.RetryWhen,
+            RetryOnExceptionMethod: retryMembers.RetryOnException,
+            ResultDelayHintMethod: retryMembers.ResultDelayHint,
+            ExceptionDelayHintMethod: retryMembers.ExceptionDelayHint);
+    }
+
+    // The slot each policy reads: the interface's, or the method's own when it has its own
+    // attribute. No slot for a policy left off. Allocated retry, timeout, rate limiter, circuit
+    // breaker, the order the slot names are numbered in.
+    private static (PolicySlot? Retry, PolicySlot? Timeout, PolicySlot? RateLimiter, PolicySlot? CircuitBreaker) MethodSlots(
+        InterfaceParse state, MethodParse method)
+    {
+        var name = method.Member.Name;
+        var index = method.DeclarationIndex;
+        var retrySlot = method.Retry is null ? null : method.OwnRetry is null ? state.ClassRetrySlot
+            : state.Slots.AddMethodSlot(name, index, PolicyKind.Retry, PolicySlotBuilder.Default(method.OwnRetry));
+        var timeoutSlot = method.Timeout is null ? null : method.OwnTimeout is null ? state.ClassTimeoutSlot
+            : state.Slots.AddMethodSlot(name, index, PolicyKind.Timeout, PolicySlotBuilder.Default(method.OwnTimeout));
+        var rateSlot = method.RateLimit is null ? null : method.OwnRateLimit is null ? state.ClassRateSlot
+            : state.Slots.AddMethodSlot(name, index, PolicyKind.RateLimiter, PolicySlotBuilder.Default(method.OwnRateLimit));
+        var cbSlot = method.CircuitBreaker is null ? null : method.OwnCb is null ? state.ClassCbSlot
+            : state.Slots.AddMethodSlot(name, index, PolicyKind.CircuitBreaker, PolicySlotBuilder.Default(method.OwnCb));
+        return (retrySlot, timeoutSlot, rateSlot, cbSlot);
+    }
+
+    // Properties, indexers and events never carry a resilience policy — only methods do — so
+    // every one the interface declares or inherits is a plain forwarding member.
+    private static ImmutableArray<PassthroughMemberModel> CollectPassthroughMembers(ImmutableArray<ForwardedMember> forwarded)
+    {
         var passthroughMembersBuilder = ImmutableArray.CreateBuilder<PassthroughMemberModel>();
 
         foreach (var entry in forwarded)
         {
             if (entry.Symbol is IPropertySymbol property)
             {
-                // Only the accessors a class can implement and call: a private or protected
-                // accessor, such as a default property's `private set`, is left out.
-                var hasGet = HasPublicGetter(property);
-                var hasInit = HasPublicSetter(property, initOnly: true);
-                var hasSet = HasPublicSetter(property, initOnly: false);
-                var typeFqn = ReturnRefPrefix(property.ReturnsByRef, property.ReturnsByRefReadonly) + property.Type.ToDisplayString(FqnFormat);
-                var propertyReturnsByRef = property.ReturnsByRef || property.ReturnsByRefReadonly;
-
-                if (property.IsIndexer)
-                {
-                    var idxParamList = ParameterDeclarations(property.Parameters);
-                    var idxArgList = Arguments(property.Parameters, replaceCancellationToken: false);
-
-                    passthroughMembersBuilder.Add(new PassthroughMemberModel(
-                        Kind: PassthroughMemberKind.Indexer,
-                        Name: "this",
-                        TypeFqn: typeFqn,
-                        HasGet: hasGet,
-                        HasSet: hasSet,
-                        HasInit: hasInit,
-                        ParameterList: idxParamList,
-                        ArgumentList: idxArgList,
-                        InnerReceiver: entry.Receiver,
-                        ExplicitImplementations: entry.ExplicitImplementations,
-                        ExplicitInterface: entry.ExplicitInterface,
-                        ReturnsByRef: propertyReturnsByRef));
-                }
-                else
-                {
-                    passthroughMembersBuilder.Add(new PassthroughMemberModel(
-                        Kind: PassthroughMemberKind.Property,
-                        Name: property.Name,
-                        TypeFqn: typeFqn,
-                        HasGet: hasGet,
-                        HasSet: hasSet,
-                        HasInit: hasInit,
-                        InnerReceiver: entry.Receiver,
-                        ExplicitImplementations: entry.ExplicitImplementations,
-                        ExplicitInterface: entry.ExplicitInterface,
-                        ReturnsByRef: propertyReturnsByRef));
-                }
+                passthroughMembersBuilder.Add(PropertyPassthrough(entry, property));
             }
             else if (entry.Symbol is IEventSymbol evt)
             {
@@ -562,36 +529,47 @@ public sealed partial class ResilienceGenerator : IIncrementalGenerator
             }
         }
 
-        // Nothing to emit: no member, own or inherited, and nothing to report. An own method the
-        // proxy does not forward, such as a redeclared Equals, still counts, as it did in 2.0.1:
-        // the proxy then implements the interface through object's members and default bodies.
-        if (methodsBuilder.Count == 0 && passthroughBuilder.Count == 0
-            && passthroughMembersBuilder.Count == 0 && diagnosticsBuilder.Count == 0
-            && !forwarded.Any(static f => f.SlotOnly))
-            return null;
+        return passthroughMembersBuilder.ToImmutable();
+    }
 
-        var interfaceFqn = iface.ToDisplayString(FqnFormat);
+    private static PassthroughMemberModel PropertyPassthrough(ForwardedMember entry, IPropertySymbol property)
+    {
+        // Only the accessors a class can implement and call: a private or protected
+        // accessor, such as a default property's `private set`, is left out.
+        var hasGet = HasPublicGetter(property);
+        var hasInit = HasPublicSetter(property, initOnly: true);
+        var hasSet = HasPublicSetter(property, initOnly: false);
+        var typeFqn = ReturnRefPrefix(property.ReturnsByRef, property.ReturnsByRefReadonly) + property.Type.ToDisplayString(FqnFormat);
+        var propertyReturnsByRef = property.ReturnsByRef || property.ReturnsByRefReadonly;
 
-        var isPublic = IsEffectivelyPublic(iface);
-        return new ResilienceModel(
-            Namespace: ns,
-            InterfaceName: iface.Name,
-            InterfaceFqn: interfaceFqn,
-            IsPublic: isPublic,
-            // Overwritten once the accessibility option is combined in, in Initialize; this default
-            // matches today's behavior (ZeroAllocGeneratedAccessibility unset == Public) for any
-            // code path that reads the model before that combine runs.
-            EmitPublicEntryPoints: isPublic,
-            PoliciesClassName: ServiceName(iface.Name) + "ResiliencePolicies",
-            Slots: slots.ToImmutable(),
-            ClassRetry: classRetry,
-            ClassTimeout: classTimeout,
-            ClassRateLimit: classRateLimit,
-            ClassCircuitBreaker: classCircuitBreaker,
-            Methods: methodsBuilder.ToImmutable(),
-            PassthroughMethods: passthroughBuilder.ToImmutable(),
-            PassthroughMembers: passthroughMembersBuilder.ToImmutable(),
-            Diagnostics: diagnosticsBuilder.ToImmutable());
+        if (property.IsIndexer)
+        {
+            return new PassthroughMemberModel(
+                Kind: PassthroughMemberKind.Indexer,
+                Name: "this",
+                TypeFqn: typeFqn,
+                HasGet: hasGet,
+                HasSet: hasSet,
+                HasInit: hasInit,
+                ParameterList: ParameterDeclarations(property.Parameters),
+                ArgumentList: Arguments(property.Parameters, replaceCancellationToken: false),
+                InnerReceiver: entry.Receiver,
+                ExplicitImplementations: entry.ExplicitImplementations,
+                ExplicitInterface: entry.ExplicitInterface,
+                ReturnsByRef: propertyReturnsByRef);
+        }
+
+        return new PassthroughMemberModel(
+            Kind: PassthroughMemberKind.Property,
+            Name: property.Name,
+            TypeFqn: typeFqn,
+            HasGet: hasGet,
+            HasSet: hasSet,
+            HasInit: hasInit,
+            InnerReceiver: entry.Receiver,
+            ExplicitImplementations: entry.ExplicitImplementations,
+            ExplicitInterface: entry.ExplicitInterface,
+            ReturnsByRef: propertyReturnsByRef);
     }
 
     // An internal interface, or a public one nested in a non-public type, cannot appear in a

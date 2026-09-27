@@ -171,55 +171,13 @@ public sealed partial class ResilienceGenerator
             ? lookup.Find(exceptionHintName, lookup.IsNullableTimeSpan, lookup.IsException)
             : null;
 
-        // RetryWhen: does an overload of the right shape take this method's error type?
-        IMethodSymbol? retryWhen = null;
-        var retryWhenHasShape = false;
-        string? retryWhenLabel = null;
-        if (retry.RetryWhen is { } retryWhenName
-            && lookup.Find(retryWhenName, IsBoolean, static _ => true) is not null)
-        {
-            retryWhenHasShape = true;
-            retryWhen = errorType is { } error
-                ? lookup.Find(retryWhenName, IsBoolean, t => SameType(t, error))
-                : null;
-            if (retryWhen is null)
-                retryWhenLabel = $"RetryWhen = \"{retryWhenName}\"";
-        }
+        var (retryWhen, retryWhenHasShape, retryWhenLabel) = ResolveRetryWhen(lookup, retry, errorType);
 
-        // DelayHint may name an overload set: the overload for the error type serves failed
-        // Results, and only with RetryWhen; the Exception overload serves thrown exceptions on
-        // every method. Either may be absent, so DelayHint is reported only when no overload of
-        // the set applies to this method. Skipped when RetryWhen is set but is ZR0009's.
-        IMethodSymbol? resultHint = null;
-        string? hintLabel = null;
-        (IMethodSymbol Overload, ITypeSymbol Parameter)? hintSubclass = null;
-        if (retry.DelayHint is { } hintName
-            && (retry.RetryWhen is null || retryWhenHasShape))
-        {
-            // The overload for this method's error type, which is the Exception overload when the
-            // error type is Exception itself.
-            var hintForError = errorType is { } error
-                ? lookup.Find(hintName, lookup.IsNullableTimeSpan, t => SameType(t, error))
-                : null;
-            if (retryWhen is not null && hintForError is not null)
-            {
-                resultHint = hintForError;
-            }
-            // A hint overload that does take the error type starts working once RetryWhen does,
-            // so it is not reported beside a failing RetryWhen.
-            else if (exceptionHint is null
-                && (retryWhenLabel is null || hintForError is null)
-                && lookup.Find(hintName, lookup.IsNullableTimeSpan, static _ => true) is { } unused)
-            {
-                hintLabel = $"DelayHint = \"{hintName}\"";
-                var unusedParameter = unused.Parameters[0].Type;
-                if (lookup.IsExceptionSubclass(unusedParameter)
-                    && !(errorType is { } subclassError && SameType(unusedParameter, subclassError)))
-                {
-                    hintSubclass = (unused, unusedParameter);
-                }
-            }
-        }
+        // Skipped when RetryWhen is set but is ZR0009's.
+        var (resultHint, hintLabel, hintSubclass) = retry.DelayHint is { } hintName
+            && (retry.RetryWhen is null || retryWhenHasShape)
+            ? ResolveDelayHint(lookup, hintName, errorType, retryWhen, retryWhenLabel, exceptionHint)
+            : (null, null, null);
 
         if (report && (retryWhenLabel is not null || hintLabel is not null))
         {
@@ -241,6 +199,58 @@ public sealed partial class ResilienceGenerator
             retryOnException is null ? null : CallTarget(retryOnException),
             resultHint is null ? null : CallTarget(resultHint),
             exceptionHint is null ? null : CallTarget(exceptionHint));
+    }
+
+    // RetryWhen: does an overload of the right shape take this method's error type? HasShape is
+    // whether any overload has the shape at all; Label is set when one does but none takes it.
+    private static (IMethodSymbol? Method, bool HasShape, string? Label) ResolveRetryWhen(
+        RetryMemberLookup lookup,
+        RetryConfig retry,
+        ITypeSymbol? errorType)
+    {
+        if (retry.RetryWhen is not { } retryWhenName
+            || lookup.Find(retryWhenName, IsBoolean, static _ => true) is null)
+            return (null, false, null);
+
+        var retryWhen = errorType is { } error
+            ? lookup.Find(retryWhenName, IsBoolean, t => SameType(t, error))
+            : null;
+        return (retryWhen, true, retryWhen is null ? $"RetryWhen = \"{retryWhenName}\"" : null);
+    }
+
+    // DelayHint may name an overload set: the overload for the error type serves failed
+    // Results, and only with RetryWhen; the Exception overload serves thrown exceptions on
+    // every method. Either may be absent, so DelayHint is reported only when no overload of
+    // the set applies to this method.
+    private static (IMethodSymbol? ResultHint, string? Label, (IMethodSymbol Overload, ITypeSymbol Parameter)? Subclass) ResolveDelayHint(
+        RetryMemberLookup lookup,
+        string hintName,
+        ITypeSymbol? errorType,
+        IMethodSymbol? retryWhen,
+        string? retryWhenLabel,
+        IMethodSymbol? exceptionHint)
+    {
+        // The overload for this method's error type, which is the Exception overload when the
+        // error type is Exception itself.
+        var hintForError = errorType is { } error
+            ? lookup.Find(hintName, lookup.IsNullableTimeSpan, t => SameType(t, error))
+            : null;
+        if (retryWhen is not null && hintForError is not null)
+            return (hintForError, null, null);
+
+        // A hint overload that does take the error type starts working once RetryWhen does,
+        // so it is not reported beside a failing RetryWhen.
+        if (exceptionHint is not null
+            || (retryWhenLabel is not null && hintForError is not null)
+            || lookup.Find(hintName, lookup.IsNullableTimeSpan, static _ => true) is not { } unused)
+            return (null, null, null);
+
+        var unusedParameter = unused.Parameters[0].Type;
+        var subclass = lookup.IsExceptionSubclass(unusedParameter)
+            && !(errorType is { } subclassError && SameType(unusedParameter, subclassError))
+            ? (unused, unusedParameter)
+            : ((IMethodSymbol Overload, ITypeSymbol Parameter)?)null;
+        return (null, $"DelayHint = \"{hintName}\"", subclass);
     }
 
     // One ZR0010 per method. RetryWhen and DelayHint share one reason when they fail for the

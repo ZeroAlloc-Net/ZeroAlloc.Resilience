@@ -184,52 +184,16 @@ internal static class ResilienceWriter
 
         // 1. Rate limit
         if (method.RateLimit is not null)
-        {
-            sb.AppendLine($"        if (!{method.RateLimiterSlot!.FieldName}.TryAcquire())");
-            if (method.ReturnsFailureResult)
-                sb.AppendLine($"            return {FailureExpression(method, "\"RateLimit\"", "\"Rate limit exceeded.\"", exceptionExpr: null)};");
-            else
-                sb.AppendLine("            throw new global::ZeroAlloc.Resilience.ResilienceException(global::ZeroAlloc.Resilience.ResiliencePolicy.RateLimit, \"Rate limit exceeded.\");");
-            sb.AppendLine();
-        }
+            WriteRateLimitCheck(sb, method);
 
         // 2. Circuit breaker check
         if (method.CircuitBreaker is not null)
-        {
-            sb.AppendLine($"        if (!{method.CircuitBreakerSlot!.FieldName}.CanExecute())");
-            sb.AppendLine("        {");
-            if (method.FallbackMethodName is not null)
-            {
-                var awaitFb = method.IsAsync ? "await " : "";
-                var configFb = method.IsAsync ? ".ConfigureAwait(false)" : "";
-                var fallbackCall = $"{awaitFb}{method.FallbackReceiver}.{method.FallbackMethodName}({method.ArgumentList}){configFb}";
-                if (method.ReturnsValue)
-                    sb.AppendLine($"            return {fallbackCall};");
-                else
-                {
-                    sb.AppendLine($"            {fallbackCall};");
-                    sb.AppendLine("            return;");
-                }
-            }
-            else if (method.ReturnsFailureResult)
-                sb.AppendLine($"            return {FailureExpression(method, "\"CircuitBreaker\"", "\"Circuit breaker is open.\"", exceptionExpr: null)};");
-            else
-                sb.AppendLine("            throw new global::ZeroAlloc.Resilience.ResilienceException(global::ZeroAlloc.Resilience.ResiliencePolicy.CircuitBreaker, \"Circuit breaker is open.\");");
-            sb.AppendLine("        }");
-            sb.AppendLine();
-        }
+            WriteCircuitBreakerCheck(sb, method);
 
         // 3. Total timeout CTS
         bool hasTotalTimeout = method.Timeout is not null;
         if (hasTotalTimeout)
-        {
-            if (method.CancellationTokenParamName is not null)
-                sb.AppendLine($"        using var __totalCts = global::System.Threading.CancellationTokenSource.CreateLinkedTokenSource({method.CancellationTokenParamName});");
-            else
-                sb.AppendLine("        using var __totalCts = new global::System.Threading.CancellationTokenSource();");
-            sb.AppendLine($"        __totalCts.CancelAfter({method.TimeoutSlot!.FieldName}.TotalMs);");
-            sb.AppendLine();
-        }
+            WriteTotalTimeoutSource(sb, method);
 
         // 4. Retry loop or single call
         if (method.Retry is not null)
@@ -245,6 +209,54 @@ internal static class ResilienceWriter
         }
 
         sb.AppendLine("    }");
+        sb.AppendLine();
+    }
+
+    // A call the rate limiter rejects returns a failure Result or throws, without calling inner.
+    private static void WriteRateLimitCheck(StringBuilder sb, MethodModel method)
+    {
+        sb.AppendLine($"        if (!{method.RateLimiterSlot!.FieldName}.TryAcquire())");
+        if (method.ReturnsFailureResult)
+            sb.AppendLine($"            return {FailureExpression(method, "\"RateLimit\"", "\"Rate limit exceeded.\"", exceptionExpr: null)};");
+        else
+            sb.AppendLine("            throw new global::ZeroAlloc.Resilience.ResilienceException(global::ZeroAlloc.Resilience.ResiliencePolicy.RateLimit, \"Rate limit exceeded.\");");
+        sb.AppendLine();
+    }
+
+    // An open circuit calls the fallback, or returns a failure Result or throws.
+    private static void WriteCircuitBreakerCheck(StringBuilder sb, MethodModel method)
+    {
+        sb.AppendLine($"        if (!{method.CircuitBreakerSlot!.FieldName}.CanExecute())");
+        sb.AppendLine("        {");
+        if (method.FallbackMethodName is not null)
+        {
+            var awaitFb = method.IsAsync ? "await " : "";
+            var configFb = method.IsAsync ? ".ConfigureAwait(false)" : "";
+            var fallbackCall = $"{awaitFb}{method.FallbackReceiver}.{method.FallbackMethodName}({method.ArgumentList}){configFb}";
+            if (method.ReturnsValue)
+                sb.AppendLine($"            return {fallbackCall};");
+            else
+            {
+                sb.AppendLine($"            {fallbackCall};");
+                sb.AppendLine("            return;");
+            }
+        }
+        else if (method.ReturnsFailureResult)
+            sb.AppendLine($"            return {FailureExpression(method, "\"CircuitBreaker\"", "\"Circuit breaker is open.\"", exceptionExpr: null)};");
+        else
+            sb.AppendLine("            throw new global::ZeroAlloc.Resilience.ResilienceException(global::ZeroAlloc.Resilience.ResiliencePolicy.CircuitBreaker, \"Circuit breaker is open.\");");
+        sb.AppendLine("        }");
+        sb.AppendLine();
+    }
+
+    // The total-timeout source, linked to the caller's token when the method has one.
+    private static void WriteTotalTimeoutSource(StringBuilder sb, MethodModel method)
+    {
+        if (method.CancellationTokenParamName is not null)
+            sb.AppendLine($"        using var __totalCts = global::System.Threading.CancellationTokenSource.CreateLinkedTokenSource({method.CancellationTokenParamName});");
+        else
+            sb.AppendLine("        using var __totalCts = new global::System.Threading.CancellationTokenSource();");
+        sb.AppendLine($"        __totalCts.CancelAfter({method.TimeoutSlot!.FieldName}.TotalMs);");
         sb.AppendLine();
     }
 
@@ -340,6 +352,23 @@ internal static class ResilienceWriter
         sb.AppendLine("                __lastWasResult = true;");
         sb.AppendLine("            }");
         WriteCallerCancellationCatch(sb, method);
+        WriteResultAwareExceptionCatch(sb, method, breaker);
+        WriteResultAwareResultCheck(sb, method, breaker);
+        if (hasTotalTimeout)
+            WriteTotalTimeoutExit(sb, method, "            ");
+        sb.AppendLine($"            if (__attempt == {retry}.MaxAttempts - 1) break;");
+        var delay = hasHint ? $"{retry}.GetDelayMs(__attempt, __hint)" : $"{retry}.GetBackoffMs(__attempt)";
+        WriteBackoffWait(sb, method, hasTotalTimeout, delay, "            ");
+        sb.AppendLine("        }");
+        sb.AppendLine("        // All attempts exhausted, or a failure that is not retried");
+        sb.AppendLine("        if (__lastWasResult) return __lastResult;");
+        WriteRetryExhaustion(sb, method);
+    }
+
+    // The Result-aware loop's catch: an exception is a breaker failure, and RetryOnException and
+    // the Exception DelayHint run here, outside the try they would otherwise be guarded by.
+    private static void WriteResultAwareExceptionCatch(StringBuilder sb, MethodModel method, string? breaker)
+    {
         sb.AppendLine("            catch (global::System.Exception __ex)");
         sb.AppendLine("            {");
         sb.AppendLine("                __lastEx = __ex;");
@@ -351,6 +380,12 @@ internal static class ResilienceWriter
         if (method.ExceptionDelayHintMethod is not null)
             sb.AppendLine($"                __hint = {method.ExceptionDelayHintMethod}(__ex);");
         sb.AppendLine("            }");
+    }
+
+    // A returned Result that succeeded, or failed with an error RetryWhen does not call transient,
+    // is returned; a transient failure is a breaker failure and reads the Result DelayHint.
+    private static void WriteResultAwareResultCheck(StringBuilder sb, MethodModel method, string? breaker)
+    {
         sb.AppendLine("            if (__lastWasResult)");
         sb.AppendLine("            {");
         sb.AppendLine($"                if (__lastResult.IsSuccess || !{method.RetryWhenMethod}(__lastResult.Error))");
@@ -364,15 +399,6 @@ internal static class ResilienceWriter
         if (method.ResultDelayHintMethod is not null)
             sb.AppendLine($"                __hint = {method.ResultDelayHintMethod}(__lastResult.Error);");
         sb.AppendLine("            }");
-        if (hasTotalTimeout)
-            WriteTotalTimeoutExit(sb, method, "            ");
-        sb.AppendLine($"            if (__attempt == {retry}.MaxAttempts - 1) break;");
-        var delay = hasHint ? $"{retry}.GetDelayMs(__attempt, __hint)" : $"{retry}.GetBackoffMs(__attempt)";
-        WriteBackoffWait(sb, method, hasTotalTimeout, delay, "            ");
-        sb.AppendLine("        }");
-        sb.AppendLine("        // All attempts exhausted, or a failure that is not retried");
-        sb.AppendLine("        if (__lastWasResult) return __lastResult;");
-        WriteRetryExhaustion(sb, method);
     }
 
     // The per-attempt timeout is a runtime value, so the CTS is created only when it is set.
