@@ -109,3 +109,4 @@ override ZeroAlloc.Resilience.ResilienceError.ToString() -> string!
 static ZeroAlloc.Resilience.ResilienceError.operator !=(ZeroAlloc.Resilience.ResilienceError left, ZeroAlloc.Resilience.ResilienceError right) -> bool
 static ZeroAlloc.Resilience.ResilienceError.operator ==(ZeroAlloc.Resilience.ResilienceError left, ZeroAlloc.Resilience.ResilienceError right) -> bool
 ~override ZeroAlloc.Resilience.ResilienceError.Equals(object obj) -> bool
+ZeroAlloc.Resilience.CircuitBreakerPolicy.CircuitBreakerPolicy(int maxFailures, int resetMs, int halfOpenProbes, System.TimeProvider! timeProvider) -> void
