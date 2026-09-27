@@ -53,7 +53,7 @@ internal sealed class IApiResilienceProxy : global::T.IApi
             {
                 __lastEx = __ex;
                 __lastWasResult = false;
-                if (!global::T.IApi.IsTransientException(__ex)) break;
+                if (!global::T.IApi.IsTransientException(__ex)) throw;
                 __hint = global::T.IApi.RetryAfter(__ex);
             }
             if (__lastWasResult)

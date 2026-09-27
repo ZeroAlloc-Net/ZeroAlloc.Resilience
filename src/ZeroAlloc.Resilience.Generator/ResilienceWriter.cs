@@ -286,8 +286,7 @@ internal static class ResilienceWriter
             sb.AppendLine($"                {method.CircuitBreakerSlot!.FieldName}.OnFailure(__ex);");
         // RetryOnException and the Exception overload of DelayHint run in the catch block, which
         // is outside the try it guards: an exception they throw reaches the caller unchanged.
-        if (method.RetryOnExceptionMethod is not null)
-            sb.AppendLine($"                if (!{method.RetryOnExceptionMethod}(__ex)) break;");
+        WriteRetryOnExceptionCheck(sb, method);
         var delay = $"{retry}.GetBackoffMs(__attempt)";
         if (method.ExceptionDelayHintMethod is not null)
         {
@@ -304,7 +303,20 @@ internal static class ResilienceWriter
         WriteRetryExhaustion(sb, method);
     }
 
-    // Every attempt threw, or RetryOnException declined the last exception.
+    // An exception RetryOnException declines was never retried, so a method that throws rethrows
+    // it from the catch with `throw;`: the original exception with its original stack, not a
+    // ResilienceException saying every attempt failed. A method that returns failures instead of
+    // throwing leaves the loop and turns it into a failure, as it does any exception. It runs
+    // after the breaker's OnFailure, so a declined exception still counts as a breaker failure.
+    private static void WriteRetryOnExceptionCheck(StringBuilder sb, MethodModel method)
+    {
+        if (method.RetryOnExceptionMethod is null) return;
+        var declined = method.ReturnsFailureResult ? "break;" : "throw;";
+        sb.AppendLine($"                if (!{method.RetryOnExceptionMethod}(__ex)) {declined}");
+    }
+
+    // Every attempt threw, or the total timeout ended the retries after an exception; for a
+    // method that returns failures, also RetryOnException declining the last exception.
     private static void WriteRetryExhaustion(StringBuilder sb, MethodModel method)
     {
         // NonThrowing on a return type that cannot hold a ResilienceError never reaches the writer:
@@ -375,8 +387,7 @@ internal static class ResilienceWriter
         sb.AppendLine("                __lastWasResult = false;");
         if (breaker is not null)
             sb.AppendLine($"                {breaker}.OnFailure(__ex);");
-        if (method.RetryOnExceptionMethod is not null)
-            sb.AppendLine($"                if (!{method.RetryOnExceptionMethod}(__ex)) break;");
+        WriteRetryOnExceptionCheck(sb, method);
         if (method.ExceptionDelayHintMethod is not null)
             sb.AppendLine($"                __hint = {method.ExceptionDelayHintMethod}(__ex);");
         sb.AppendLine("            }");

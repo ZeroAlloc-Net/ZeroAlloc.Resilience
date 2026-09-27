@@ -273,25 +273,37 @@ public class ResultAwareRetryIntegrationTests
     }
 
     [Fact(Timeout = 10_000)]
-    public async Task TransientFailure_ThenADeclinedException_ThrowsResilienceException()
+    public async Task TransientFailure_ThenADeclinedException_RethrowsItUnwrapped()
     {
         var inner = new ScriptedApi(static call =>
             call == 1 ? new ApiError(429, RetryAfterMs: 0) : throw new ArgumentException("permanent", nameof(call)));
 
         var act = async () => await Proxy(inner).GetAsync(CancellationToken.None);
 
-        (await act.Should().ThrowAsync<ResilienceException>()).WithInnerException<ArgumentException>();
+        await act.Should().ThrowExactlyAsync<ArgumentException>().WithMessage("permanent*");
         inner.Calls.Should().Be(2);
     }
 
+    // #195: a declined exception was never retried, so it reaches the caller as itself.
     [Fact]
-    public async Task RetryOnExceptionFalse_StopsRetrying()
+    public async Task RetryOnExceptionFalse_StopsRetrying_AndRethrowsUnwrapped()
     {
         var inner = new ScriptedApi(static call => throw new ArgumentException("permanent", nameof(call)));
 
         var act = async () => await Proxy(inner).GetAsync(CancellationToken.None);
 
-        (await act.Should().ThrowAsync<ResilienceException>()).WithInnerException<ArgumentException>();
+        await act.Should().ThrowExactlyAsync<ArgumentException>().WithMessage("permanent*");
+        inner.Calls.Should().Be(1);
+    }
+
+    [Fact]
+    public void RetryOnExceptionFalse_Sync_RethrowsUnwrapped()
+    {
+        var inner = new ScriptedApi(static call => throw new ArgumentException("permanent", nameof(call)));
+
+        var act = () => Proxy(inner).Get(CancellationToken.None);
+
+        act.Should().ThrowExactly<ArgumentException>().WithMessage("permanent*");
         inner.Calls.Should().Be(1);
     }
 

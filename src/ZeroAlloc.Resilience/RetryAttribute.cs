@@ -38,7 +38,9 @@ public sealed class RetryAttribute : Attribute
 
     /// <summary>
     /// The name of a static method <c>bool M(Exception exception)</c> on the interface or a base
-    /// interface. A thrown exception it returns <see langword="false"/> for ends the retries.
+    /// interface. A thrown exception it returns <see langword="false"/> for ends the retries and
+    /// is rethrown unchanged, not wrapped in <see cref="ResilienceException"/>; a method returning
+    /// a Result whose failure the proxy can build returns that failure instead.
     /// Default: <see langword="null"/>, every exception is retried.
     /// </summary>
     public string? RetryOnException { get; init; }
