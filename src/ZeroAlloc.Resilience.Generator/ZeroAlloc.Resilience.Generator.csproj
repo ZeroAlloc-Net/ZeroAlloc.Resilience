@@ -20,7 +20,6 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" PrivateAssets="all" />
     <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="5.9.0" PrivateAssets="all" />
-    <PackageReference Include="ZeroAlloc.Pipeline.Generators" Version="0.1.6" PrivateAssets="all" />
   </ItemGroup>
   <ItemGroup>
     <!-- Release tracking for the ZR diagnostics; RS2008 reads these. -->
