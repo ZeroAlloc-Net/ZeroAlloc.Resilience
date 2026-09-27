@@ -1,5 +1,3 @@
-#pragma warning disable ZR0002
-
 using BenchmarkDotNet.Attributes;
 using System;
 using System.Threading;
@@ -149,8 +147,12 @@ public class ResilienceBenchmarks
         var cbOpen = new CircuitBreakerPolicy(1, 60_000, 1); // trip on 1 failure, long reset
         var cbOpenImpl = new AlwaysFailsImpl();
         _cbOpenProxy = new ICircuitServiceResilienceProxy(cbOpenImpl, new CircuitServiceResiliencePolicies { CircuitBreaker = cbOpen });
-        // Pre-trip the circuit
-        try { _cbOpenProxy.GetAsync("x", CancellationToken.None).GetAwaiter().GetResult(); } catch { }
+        // Pre-trip the circuit. The breaker records the inner's failure and rethrows it unchanged,
+        // so the one failure it takes to open the circuit surfaces as InvalidOperationException.
+        try { _ = _cbOpenProxy.GetAsync("x", CancellationToken.None).GetAwaiter().GetResult(); }
+        catch (InvalidOperationException) { /* expected: the failure that opens the circuit */ }
+        if (cbOpen.State != CircuitBreakerState.Open)
+            throw new InvalidOperationException($"The circuit did not open during setup; it is {cbOpen.State}.");
 
         // BurstSize = 0 means immediately exhausted
         var rlExhausted = new RateLimiter(1, 0, RateLimitScope.Shared);

@@ -1,5 +1,3 @@
-#pragma warning disable ZR0002
-
 using System;
 using System.Threading;
 using System.Threading.Tasks;
@@ -63,6 +61,14 @@ public class PollyComparisonBenchmark
     public void Setup()
     {
         _inner = new AlwaysSucceedsImpl();
+        SetupSinglePolicyComparisons();
+        SetupZeroBackoffComparison();
+        SetupAllPoliciesComparisons();
+    }
+
+    // Retry happy path, circuit breaker closed, and retry with 2/3 failures.
+    private void SetupSinglePolicyComparisons()
+    {
         var retry = new RetryPolicy(3, 1, false, 0);
         var cb = new CircuitBreakerPolicy(5, 1_000, 1);
         var rl = new RateLimiter(1_000_000, 1_000_000, RateLimitScope.Shared);
@@ -116,7 +122,12 @@ public class PollyComparisonBenchmark
             })
             .Build();
 
-        // Zero-backoff retry pair — isolates loop overhead from Task.Delay timer cost.
+        _pollyFailImpl = new RetryWith2FailuresImpl();
+    }
+
+    // Zero-backoff retry pair — isolates loop overhead from Task.Delay timer cost.
+    private void SetupZeroBackoffComparison()
+    {
         var zeroBackoffPolicy = new RetryPolicy(3, 0, false, 0);
         _zaRetryZeroBackoff = new IRetryZeroBackoffServiceResilienceProxy(
             new RetryZeroBackoffWith2FailuresImpl(), new RetryZeroBackoffServiceResiliencePolicies { Retry = zeroBackoffPolicy, Timeout = new TimeoutPolicy(5_000) });
@@ -131,10 +142,11 @@ public class PollyComparisonBenchmark
                 ShouldHandle = new PredicateBuilder().Handle<Exception>(),
             })
             .Build();
+    }
 
-        _pollyFailImpl = new RetryWith2FailuresImpl();
-
-        // === All-policies stacked harness ===
+    // === All-policies stacked harness ===
+    private void SetupAllPoliciesComparisons()
+    {
         var maxCbPolicy = new CircuitBreakerPolicy(int.MaxValue, 60_000, 1);
         var maxRlPolicy = new RateLimiter(int.MaxValue, int.MaxValue, RateLimitScope.Shared);
         var standardRetryPolicy = new RetryPolicy(3, 1, false, 0);
@@ -161,19 +173,54 @@ public class PollyComparisonBenchmark
             cbOpenZaImpl, new AllPoliciesCbOpenServiceResiliencePolicies { Retry = standardRetryPolicy, Timeout = standardTimeoutPolicy, RateLimiter = maxRlPolicy, CircuitBreaker = lowCbPolicy });
         _pollyAllCbOpen = BuildPolly4PolicyPipeline(5, TimeSpan.FromSeconds(60), int.MaxValue);
 
-        // Pre-trip both CBs by calling them past MaxFailures with a failing impl.
+        TripZaCircuit(lowCbPolicy);
+        TripPollyCircuit(cbOpenZaImpl);
+    }
+
+    // Pre-trips the ZA circuit by calling past MaxFailures with a failing inner. The first calls
+    // exhaust their retries against the failing inner and the later ones find the circuit open;
+    // both end in ResilienceException. Anything else is a broken setup and fails it.
+    private void TripZaCircuit(CircuitBreakerPolicy circuitBreaker)
+    {
         for (int i = 0; i < 10; i++)
         {
             try { _ = _zaAllCbOpen.GetAsync("trip", CancellationToken.None).GetAwaiter().GetResult(); }
-            catch { /* expected — inner throws */ }
+            catch (ResilienceException) { /* expected: retry exhausted, then circuit open */ }
+        }
+
+        if (circuitBreaker.State != CircuitBreakerState.Open)
+            throw new InvalidOperationException($"The ZA circuit did not open during setup; it is {circuitBreaker.State}.");
+    }
+
+    // Pre-trips the Polly circuit the same way. Retry rethrows the inner's own exception once
+    // its attempts are exhausted, and does not retry BrokenCircuitException once the circuit
+    // opens. A probe then confirms the circuit rejects calls, as the benchmark expects.
+    private void TripPollyCircuit(AlwaysFailsImpl failingInner)
+    {
+        for (int i = 0; i < 10; i++)
+        {
             try
             {
                 _ = _pollyAllCbOpen.ExecuteAsync(
-                    async ct => await cbOpenZaImpl.GetAsync("trip", ct), CancellationToken.None)
+                    async ct => await failingInner.GetAsync("trip", ct).ConfigureAwait(false), CancellationToken.None)
                     .GetAwaiter().GetResult();
             }
-            catch { /* expected */ }
+            catch (InvalidOperationException) { /* expected: retry exhausted against the failing inner */ }
+            catch (BrokenCircuitException) { /* expected: circuit open */ }
         }
+
+        try
+        {
+            _ = _pollyAllCbOpen.ExecuteAsync(
+                static _ => new ValueTask<string>("probe"), CancellationToken.None)
+                .GetAwaiter().GetResult();
+        }
+        catch (BrokenCircuitException)
+        {
+            return;
+        }
+
+        throw new InvalidOperationException("The Polly circuit did not open during setup.");
     }
 
     [IterationSetup(Targets = new[] { nameof(Polly_AllPolicies_Retry), nameof(Za_AllPolicies_Retry) })]
@@ -188,7 +235,7 @@ public class PollyComparisonBenchmark
     [Benchmark(Baseline = true, Description = "Polly: Retry pipeline, happy path")]
     [BenchmarkCategory("RetryHappy")]
     public async ValueTask<string> Polly_RetryHappy()
-        => await _pollyRetry.ExecuteAsync(async ct => await _inner.GetAsync("x", ct), CancellationToken.None);
+        => await _pollyRetry.ExecuteAsync(async ct => await _inner.GetAsync("x", ct).ConfigureAwait(false), CancellationToken.None).ConfigureAwait(false);
 
     [Benchmark(Description = "ZA.Resilience: Retry proxy, happy path")]
     [BenchmarkCategory("RetryHappy")]
@@ -200,7 +247,7 @@ public class PollyComparisonBenchmark
     [Benchmark(Description = "Polly: CircuitBreaker pipeline, closed")]
     [BenchmarkCategory("CircuitBreakerClosed")]
     public async ValueTask<string> Polly_CbClosed()
-        => await _pollyCb.ExecuteAsync(async ct => await _inner.GetAsync("x", ct), CancellationToken.None);
+        => await _pollyCb.ExecuteAsync(async ct => await _inner.GetAsync("x", ct).ConfigureAwait(false), CancellationToken.None).ConfigureAwait(false);
 
     [Benchmark(Description = "ZA.Resilience: CircuitBreaker proxy, closed")]
     [BenchmarkCategory("CircuitBreakerClosed")]
@@ -212,7 +259,7 @@ public class PollyComparisonBenchmark
     [Benchmark(Description = "Polly: Retry with 2/3 failures")]
     [BenchmarkCategory("RetryWithFailures")]
     public async ValueTask<string> Polly_RetryFailTwice()
-        => await _pollyRetry.ExecuteAsync(async ct => await _pollyFailImpl.GetAsync("x", ct), CancellationToken.None);
+        => await _pollyRetry.ExecuteAsync(async ct => await _pollyFailImpl.GetAsync("x", ct).ConfigureAwait(false), CancellationToken.None).ConfigureAwait(false);
 
     [Benchmark(Description = "ZA.Resilience: Retry proxy with 2/3 failures")]
     [BenchmarkCategory("RetryWithFailures")]
@@ -225,7 +272,7 @@ public class PollyComparisonBenchmark
     [BenchmarkCategory("RetryBackoffZero")]
     public async ValueTask<string> Polly_RetryBackoffZero_FailTwice()
         => await _pollyRetryZeroBackoff.ExecuteAsync(
-            async ct => await _pollyZeroBackoffImpl.GetAsync("x", ct), CancellationToken.None);
+            async ct => await _pollyZeroBackoffImpl.GetAsync("x", ct).ConfigureAwait(false), CancellationToken.None).ConfigureAwait(false);
 
     [Benchmark(Description = "ZA.Resilience: Retry backoff=0 (2/3 fail)")]
     [BenchmarkCategory("RetryBackoffZero")]
@@ -238,7 +285,7 @@ public class PollyComparisonBenchmark
     [BenchmarkCategory("AllPoliciesHappy")]
     public async ValueTask<string> Polly_AllPolicies_Happy()
         => await _pollyAllHappy.ExecuteAsync(
-            async ct => await _inner.GetAsync("x", ct), CancellationToken.None);
+            async ct => await _inner.GetAsync("x", ct).ConfigureAwait(false), CancellationToken.None).ConfigureAwait(false);
 
     [Benchmark(Description = "ZA.Resilience: All-policies stacked, happy path")]
     [BenchmarkCategory("AllPoliciesHappy")]
@@ -251,7 +298,7 @@ public class PollyComparisonBenchmark
     [BenchmarkCategory("AllPoliciesRetry")]
     public async ValueTask<string> Polly_AllPolicies_Retry()
         => await _pollyAllRetry.ExecuteAsync(
-            async ct => await _pollyAllRetryImpl.GetAsync("x", ct), CancellationToken.None);
+            async ct => await _pollyAllRetryImpl.GetAsync("x", ct).ConfigureAwait(false), CancellationToken.None).ConfigureAwait(false);
 
     [Benchmark(Description = "ZA.Resilience: All-policies stacked, retry triggers")]
     [BenchmarkCategory("AllPoliciesRetry")]
@@ -267,7 +314,7 @@ public class PollyComparisonBenchmark
         try
         {
             return await _pollyAllCbOpen.ExecuteAsync(
-                async ct => await new ValueTask<string>("never reached"), CancellationToken.None);
+                async ct => await new ValueTask<string>("never reached").ConfigureAwait(false), CancellationToken.None).ConfigureAwait(false);
         }
         catch (Polly.CircuitBreaker.BrokenCircuitException)
         {
@@ -281,7 +328,7 @@ public class PollyComparisonBenchmark
     {
         try
         {
-            return await _zaAllCbOpen.GetAsync("x", CancellationToken.None);
+            return await _zaAllCbOpen.GetAsync("x", CancellationToken.None).ConfigureAwait(false);
         }
         catch (ResilienceException)
         {
