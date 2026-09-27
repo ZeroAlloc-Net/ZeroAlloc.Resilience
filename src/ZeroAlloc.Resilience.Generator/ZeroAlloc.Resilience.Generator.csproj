@@ -9,7 +9,7 @@
     <Description>Source generator for ZeroAlloc.Resilience. Consumed automatically via ZeroAlloc.Resilience.</Description>
     <Version>0.0.0-local</Version>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
-    <NoWarn>$(NoWarn);RS2008;MA0051</NoWarn>
+    <NoWarn>$(NoWarn);MA0051</NoWarn>
     <!--
       The generator is bundled into ZeroAlloc.Resilience's NuGet package via the
       IncludeGeneratorInPackage target in the main library's csproj. Publishing a
@@ -22,6 +22,11 @@
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" PrivateAssets="all" />
     <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="5.9.0" PrivateAssets="all" />
     <PackageReference Include="ZeroAlloc.Pipeline.Generators" Version="0.1.6" PrivateAssets="all" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Release tracking for the ZR diagnostics; RS2008 reads these. -->
+    <AdditionalFiles Include="AnalyzerReleases.Shipped.md" />
+    <AdditionalFiles Include="AnalyzerReleases.Unshipped.md" />
   </ItemGroup>
   <ItemGroup>
     <!-- The tests read the parsed model for resolution the generated code does not show. -->
