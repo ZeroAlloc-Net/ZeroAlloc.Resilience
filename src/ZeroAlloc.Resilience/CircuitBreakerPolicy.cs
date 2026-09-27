@@ -13,9 +13,10 @@ public sealed class CircuitBreakerPolicy : IDisposable
     private readonly int _maxFailures;
     private readonly int _resetMs;
     private readonly int _halfOpenProbes;
+    private readonly TimeProvider _timeProvider;
     private long _failureCount;
     private long _probeSuccessCount;
-    private Timer? _resetTimer;
+    private ITimer? _resetTimer;
 
     /// <param name="maxFailures">Consecutive failures that trip Closed → Open.</param>
     /// <param name="resetMs">Milliseconds before Open → HalfOpen probe.</param>
@@ -25,10 +26,29 @@ public sealed class CircuitBreakerPolicy : IDisposable
     /// <paramref name="resetMs"/> is negative.
     /// </exception>
     public CircuitBreakerPolicy(int maxFailures, int resetMs, int halfOpenProbes)
+        : this(maxFailures, resetMs, halfOpenProbes, TimeProvider.System)
+    {
+    }
+
+    /// <param name="maxFailures">Consecutive failures that trip Closed → Open.</param>
+    /// <param name="resetMs">Milliseconds before Open → HalfOpen probe.</param>
+    /// <param name="halfOpenProbes">Successes required to close from HalfOpen.</param>
+    /// <param name="timeProvider">
+    /// Creates the timer that moves the circuit from Open to HalfOpen after <paramref name="resetMs"/>.
+    /// Pass a controlled provider to make that transition deterministic; the default uses the system
+    /// clock.
+    /// </param>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="maxFailures"/> or <paramref name="halfOpenProbes"/> is less than 1, or
+    /// <paramref name="resetMs"/> is negative.
+    /// </exception>
+    /// <exception cref="ArgumentNullException"><paramref name="timeProvider"/> is <c>null</c>.</exception>
+    public CircuitBreakerPolicy(int maxFailures, int resetMs, int halfOpenProbes, TimeProvider timeProvider)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(maxFailures, 1);
         ArgumentOutOfRangeException.ThrowIfNegative(resetMs);
         ArgumentOutOfRangeException.ThrowIfLessThan(halfOpenProbes, 1);
+        _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
         _maxFailures = maxFailures;
         _resetMs = resetMs;
         _halfOpenProbes = halfOpenProbes;
@@ -90,12 +110,12 @@ public sealed class CircuitBreakerPolicy : IDisposable
     private void ScheduleProbe()
     {
         // Create the new timer first, then atomically swap and dispose the old one.
-        var newTimer = new Timer(static s =>
+        var newTimer = _timeProvider.CreateTimer(static s =>
         {
             var self = (CircuitBreakerPolicy)s!;
             Interlocked.Exchange(ref self._probeSuccessCount, 0);
             self._fsm.TryFire(CircuitBreakerTrigger.Probe);
-        }, this, _resetMs, Timeout.Infinite);
+        }, this, TimeSpan.FromMilliseconds(_resetMs), Timeout.InfiniteTimeSpan);
 
         Interlocked.Exchange(ref _resetTimer, newTimer)?.Dispose();
     }

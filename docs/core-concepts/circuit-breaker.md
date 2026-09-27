@@ -93,6 +93,27 @@ catch (Exception __ex)
 
 ---
 
+## Controlling time
+
+The reset timer comes from a `TimeProvider`. The three-argument constructor, which the generated policies class uses, takes `TimeProvider.System`. Pass your own provider to the four-argument overload to control the Open → HalfOpen transition, for example with `FakeTimeProvider` in tests:
+
+```csharp
+var time = new FakeTimeProvider();
+using var cb = new CircuitBreakerPolicy(maxFailures: 1, resetMs: 1_000, halfOpenProbes: 1, time);
+
+cb.OnFailure();                           // Open
+time.Advance(TimeSpan.FromSeconds(1));    // the reset timer fires: HalfOpen
+```
+
+To use it behind a generated proxy, replace the slot in the `configure` callback:
+
+```csharp
+services.AddExternalServiceResilience<ExternalService>((sp, policies) =>
+    policies.CircuitBreaker = new CircuitBreakerPolicy(5, 1_000, 1, sp.GetRequiredService<TimeProvider>()));
+```
+
+---
+
 ## Fallback
 
 When `Fallback = nameof(SomeMethod)` is set, the generator emits a call to that method instead of throwing when the circuit is open:
