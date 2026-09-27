@@ -1,5 +1,25 @@
 # Changelog
 
+## [3.3.0](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v3.2.0...v3.3.0) (2026-09-27)
+
+
+### Features
+
+* **core:** add RethrowDeclined to rethrow exceptions RetryOnException declines ([e0a42fc](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/e0a42fce763a2d3314dde2458404e29a41bcbc91))
+* **core:** let CircuitBreakerPolicy take a TimeProvider ([#194](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/194)) ([58cf4c3](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/58cf4c3b785b008d7f179c3b4776b19dc4ee6a85)), closes [#192](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/192)
+* **generator:** warn with ZR0013 when RethrowDeclined has no effect ([e0a42fc](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/e0a42fce763a2d3314dde2458404e29a41bcbc91))
+* pass the retry attempt number to a [RetryAttempt] parameter ([#202](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/202)) ([5e9165f](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/5e9165f385acc3d8bb3a7bfd378469441a1fdcd0))
+
+
+### Bug Fixes
+
+* **core:** stop declaring package dependencies nothing uses ([#201](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/201)) ([91bbfd6](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/91bbfd69588ce39bf5db7edcb18f6b76db3da8ba))
+
+
+### Tests
+
+* make the timeout integration tests deterministic ([#190](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/190)) ([85d9aaf](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/85d9aaf3c4ff9108da8e77da7a856dce7956019c)), closes [#188](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/188)
+
 ## [3.2.0](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v3.1.0...v3.2.0) (2026-09-26)
 
 
