@@ -23,6 +23,13 @@
                       ReferenceOutputAssembly="true" />
   </ItemGroup>
   <ItemGroup>
+    <!-- PackageDependencyTests reads the package project to check what the nuspec will declare. -->
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>PackageProject</_Parameter1>
+      <_Parameter2>$(MSBuildThisFileDirectory)../../src/ZeroAlloc.Resilience/ZeroAlloc.Resilience.csproj</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+  <ItemGroup>
     <Using Include="Xunit" />
     <Using Include="AwesomeAssertions" />
   </ItemGroup>

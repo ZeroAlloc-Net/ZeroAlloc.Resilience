@@ -112,3 +112,5 @@ static ZeroAlloc.Resilience.ResilienceError.operator !=(ZeroAlloc.Resilience.Res
 static ZeroAlloc.Resilience.ResilienceError.operator ==(ZeroAlloc.Resilience.ResilienceError left, ZeroAlloc.Resilience.ResilienceError right) -> bool
 ~override ZeroAlloc.Resilience.ResilienceError.Equals(object obj) -> bool
 ZeroAlloc.Resilience.CircuitBreakerPolicy.CircuitBreakerPolicy(int maxFailures, int resetMs, int halfOpenProbes, System.TimeProvider! timeProvider) -> void
+ZeroAlloc.Resilience.RetryAttemptAttribute
+ZeroAlloc.Resilience.RetryAttemptAttribute.RetryAttemptAttribute() -> void

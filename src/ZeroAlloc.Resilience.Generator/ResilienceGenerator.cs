@@ -57,6 +57,8 @@ public sealed partial class ResilienceGenerator : IIncrementalGenerator
                 EmitPublicEntryPoints = pair.Left.IsPublic && pair.Right == GeneratedAccessibilityMode.Public,
             });
 
+        RegisterRetryAttemptDiagnostics(context);
+
         context.RegisterSourceOutput(accessibility, static (ctx, result) =>
         {
             if (result.Diagnostic is not null)
@@ -454,6 +456,14 @@ public sealed partial class ResilienceGenerator : IIncrementalGenerator
         return true;
     }
 
+    // Counts a method the interface-level [Retry] applies to, by whether it throws, for ZR0013.
+    private static void CountInterfaceRetryMethod(InterfaceParse state, MethodParse method)
+    {
+        if (method.OwnRetry is not null || method.Retry is null) return;
+        if (ReturnsFailures(method.ResultKind)) state.ClassRetryFailureMethods++;
+        else state.ClassRetryThrowingMethods++;
+    }
+
     private static MethodModel BuildMethodModel(InterfaceParse state, MethodParse method)
     {
         var member = method.Member;
@@ -462,11 +472,7 @@ public sealed partial class ResilienceGenerator : IIncrementalGenerator
         // reported for the interface's own methods and for inherited ones under the
         // interface's [Retry]; an inherited method's own [Retry] is the base interface's to
         // report.
-        if (method.OwnRetry is null && method.Retry is not null)
-        {
-            if (ReturnsFailures(method.ResultKind)) state.ClassRetryFailureMethods++;
-            else state.ClassRetryThrowingMethods++;
-        }
+        CountInterfaceRetryMethod(state, method);
 
         var retryMembers = method.Retry is null
             ? RetryMembers.None
@@ -513,7 +519,12 @@ public sealed partial class ResilienceGenerator : IIncrementalGenerator
             RetryWhenMethod: retryMembers.RetryWhen,
             RetryOnExceptionMethod: retryMembers.RetryOnException,
             ResultDelayHintMethod: retryMembers.ResultDelayHint,
-            ExceptionDelayHintMethod: retryMembers.ExceptionDelayHint);
+            ExceptionDelayHintMethod: retryMembers.ExceptionDelayHint,
+            // [RetryAttempt] takes effect only inside the retry loop; without [Retry] the caller's
+            // argument is passed, and ZR0011 says so.
+            RetryArgumentList: method.Retry is null ? null
+                : RetryArgumentList(member, replaceCancellationToken: method.CancellationTokenParamName is not null),
+            FallbackArgumentList: method.Retry is null || method.FallbackName is null ? null : FallbackArgumentList(member));
     }
 
     // The slot each policy reads: the interface's, or the method's own when it has its own
@@ -808,12 +819,15 @@ public sealed partial class ResilienceGenerator : IIncrementalGenerator
 
     // "ref counter, out value, values"; with replaceCancellationToken, the CancellationToken
     // argument is "__ct", the token the policies link to.
-    private static string Arguments(ImmutableArray<IParameterSymbol> parameters, bool replaceCancellationToken) =>
+    // substitute, when given, returns the argument for a parameter, or null for the default one.
+    private static string Arguments(ImmutableArray<IParameterSymbol> parameters, bool replaceCancellationToken,
+        Func<IParameterSymbol, string?>? substitute = null) =>
         string.Join(", ", parameters.Select(p =>
             ArgumentPrefix(p.RefKind)
-            + (replaceCancellationToken
-               && string.Equals(p.Type.ToDisplayString(), "System.Threading.CancellationToken", StringComparison.Ordinal)
-                ? "__ct" : EscapedName(p))));
+            + (substitute?.Invoke(p)
+               ?? (replaceCancellationToken
+                   && string.Equals(p.Type.ToDisplayString(), "System.Threading.CancellationToken", StringComparison.Ordinal)
+                    ? "__ct" : EscapedName(p)))));
 
     private static string ArgumentPrefix(RefKind refKind) => refKind switch
     {
@@ -947,7 +961,7 @@ public sealed partial class ResilienceGenerator : IIncrementalGenerator
     };
 
     // What two inherited declarations must agree on to collapse: the exact rendering, nullable
-    // annotations included, and for a method its own resilience attributes.
+    // annotations included, and for a method its own resilience attributes, [RetryAttempt] included.
     private static string RenderingAndPolicies(ISymbol member)
     {
         var rendering = member switch
@@ -969,7 +983,8 @@ public sealed partial class ResilienceGenerator : IIncrementalGenerator
             + "|" + ParseTimeout(GetAttribute(method, TimeoutFqn))?.ToString()
             + "|" + ParseRateLimit(GetAttribute(method, RateLimitFqn))?.ToString()
             + "|" + ParseCircuitBreaker(cb)?.ToString()
-            + "|" + (cb is null ? null : GetString(cb, "Fallback"));
+            + "|" + (cb is null ? null : GetString(cb, "Fallback"))
+            + "|" + RetryAttemptOrdinals(method);
     }
 
     // One identity declared more than once: by the interface itself and a base it hides, by two

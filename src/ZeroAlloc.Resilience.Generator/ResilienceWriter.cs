@@ -232,7 +232,7 @@ internal static class ResilienceWriter
         {
             var awaitFb = method.IsAsync ? "await " : "";
             var configFb = method.IsAsync ? ".ConfigureAwait(false)" : "";
-            var fallbackCall = $"{awaitFb}{method.FallbackReceiver}.{method.FallbackMethodName}({method.ArgumentList}){configFb}";
+            var fallbackCall = $"{awaitFb}{method.FallbackReceiver}.{method.FallbackMethodName}({method.FallbackArgumentList ?? method.ArgumentList}){configFb}";
             if (method.ReturnsValue)
                 sb.AppendLine($"            return {fallbackCall};");
             else
@@ -272,7 +272,7 @@ internal static class ResilienceWriter
         WriteAttemptToken(sb, method, retry, hasTotalTimeout);
         sb.AppendLine("            try");
         sb.AppendLine("            {");
-        var callArgs = method.HasCancellationToken ? method.ArgumentListWithToken : method.ArgumentList;
+        var callArgs = RetryCallArguments(method);
         sb.AppendLine($"                {CaptureCall(method, $"{awaitKw}{InnerCall(method, callArgs)}{configKw}")}");
         if (method.CircuitBreaker is not null)
             sb.AppendLine($"                {method.CircuitBreakerSlot!.FieldName}.OnSuccess();");
@@ -318,6 +318,12 @@ internal static class ResilienceWriter
         sb.AppendLine($"                if (!{method.RetryOnExceptionMethod}(__ex)) {declined}");
     }
 
+    // The arguments of the inner call inside the retry loop: the attempt's token in place of the
+    // caller's, and the retry number for a [RetryAttempt] parameter.
+    private static string RetryCallArguments(MethodModel method) =>
+        method.RetryArgumentList
+        ?? (method.HasCancellationToken ? method.ArgumentListWithToken : method.ArgumentList);
+
     // Every attempt threw, the total timeout ended the retries after an exception, or
     // RetryOnException declined the last exception without RethrowDeclined in effect.
     private static void WriteRetryExhaustion(StringBuilder sb, MethodModel method)
@@ -362,7 +368,7 @@ internal static class ResilienceWriter
             sb.AppendLine("            global::System.TimeSpan? __hint = null;");
         sb.AppendLine("            try");
         sb.AppendLine("            {");
-        var callArgs = method.HasCancellationToken ? method.ArgumentListWithToken : method.ArgumentList;
+        var callArgs = RetryCallArguments(method);
         sb.AppendLine($"                __lastResult = {awaitKw}{InnerCall(method, callArgs)}{configKw};");
         sb.AppendLine("                __lastWasResult = true;");
         sb.AppendLine("            }");
