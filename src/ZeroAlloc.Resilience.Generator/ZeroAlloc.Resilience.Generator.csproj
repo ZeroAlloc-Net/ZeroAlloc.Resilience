@@ -9,7 +9,6 @@
     <Description>Source generator for ZeroAlloc.Resilience. Consumed automatically via ZeroAlloc.Resilience.</Description>
     <Version>0.0.0-local</Version>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
-    <NoWarn>$(NoWarn);MA0051</NoWarn>
     <!--
       The generator is bundled into ZeroAlloc.Resilience's NuGet package via the
       IncludeGeneratorInPackage target in the main library's csproj. Publishing a
