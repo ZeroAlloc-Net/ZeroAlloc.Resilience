@@ -53,3 +53,13 @@ Rule ID | Category             | Severity | Notes
 --------|----------------------|----------|----------------------------------------------
 ZR0009  | ZeroAlloc.Resilience | Error    | Retry member not found or signature mismatch
 ZR0010  | ZeroAlloc.Resilience | Error    | Result-aware retry cannot apply to method
+
+## Release 3.3.0
+
+### New Rules
+
+Rule ID | Category             | Severity | Notes
+--------|----------------------|----------|---------------------------------------------
+ZR0011  | ZeroAlloc.Resilience | Warning  | [RetryAttempt] has no effect without [Retry]
+ZR0012  | ZeroAlloc.Resilience | Error    | [RetryAttempt] parameter type not supported
+ZR0013  | ZeroAlloc.Resilience | Warning  | RethrowDeclined has no effect
