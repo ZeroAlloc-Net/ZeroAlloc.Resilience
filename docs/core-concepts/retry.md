@@ -29,6 +29,7 @@ public interface IExternalService
 | `NonThrowing` | `bool` | `false` | Asserts the method returns `Result<T, ResilienceError>` or `UnitResult<ResilienceError>` |
 | `RetryWhen` | `string?` | `null` | A static `bool M(E error)`: which failed Results to retry. See [Retrying failed Results](#retrying-failed-results) |
 | `RetryOnException` | `string?` | `null` | A static `bool M(Exception exception)`: which exceptions to retry |
+| `RethrowDeclined` | `bool` | `false` | Rethrow an exception `RetryOnException` declines unchanged. See [Declined exceptions](#declined-exceptions-and-rethrowdeclined) |
 | `DelayHint` | `string?` | `null` | A static `TimeSpan? M(E error)` and/or `TimeSpan? M(Exception exception)`: the wait before the next attempt. See [Delay hints](#delay-hints-and-maxdelayms) |
 | `MaxDelayMs` | `int` | `RetryPolicy.MaxBackoffMs`, no cap | The longest wait between attempts, for the backoff and a hint alike |
 
@@ -77,7 +78,7 @@ throw new ResilienceException(ResiliencePolicy.Retry, "All retry attempts failed
 
 `InnerException` is the last exception thrown by the inner method. For async `Result` and `Result<T>` return types, a `Failure(lastException.Message)` of that type is returned instead, and `Result<T, ResilienceError>` gets a `ResilienceError` with `PolicyType = "Retry"` and the last exception. A `Result<T, E>` with any other `E` still throws here, because no inner Result exists; a Result the inner call returns is passed through unchanged. See [Result Return Types](../guides/result-return-types.md).
 
-With `RetryWhen`, a method whose retries end on a failed Result returns that Result unchanged: the real final error, not a `ResilienceException` or a `ResilienceError`. The exhaustion above applies when the last attempt threw.
+With `RetryWhen`, a method whose retries end on a failed Result returns that Result unchanged: the real final error, not a `ResilienceException` or a `ResilienceError`. The exhaustion above applies when the last attempt threw, or when `RetryOnException` declined the exception and `RethrowDeclined` is not set.
 
 ---
 
@@ -85,9 +86,7 @@ With `RetryWhen`, a method whose retries end on a failed Result returns that Res
 
 Without `RetryWhen`, `RetryOnException` or `DelayHint`, every exception thrown by the inner call triggers a retry, except the caller's own cancellation. A Result the inner call returns, failed or not, is returned as is.
 
-- **`RetryOnException`** names a static `bool M(Exception exception)`. When it returns `false`, the retries stop at once and the exception is rethrown unchanged: the original exception with its original stack trace, not a `ResilienceException`, because it was never retried. A method returning `Result`, `Result<T>`, `Result<T, ResilienceError>` or `UnitResult<ResilienceError>` never throws, so it returns the exhaustion failure for the declined exception instead. A declined exception still counts as a circuit-breaker failure.
-
-  In 3.2.0 and earlier, a declined exception went through exhaustion and was thrown wrapped in `ResilienceException(ResiliencePolicy.Retry, "All retry attempts failed.", exception)`. **This is a behaviour change** for a method that throws: code that caught `ResilienceException` and read its `InnerException` for a declined exception now catches the exception itself.
+- **`RetryOnException`** names a static `bool M(Exception exception)`. When it returns `false`, the retries stop and the exhaustion behaviour applies at once, unless `RethrowDeclined` is set. See [Declined exceptions](#declined-exceptions-and-rethrowdeclined).
 - **`RetryWhen`** names a static `bool M(E error)`, where `E` is the error type of the method's Result. When it returns `true` for a failed Result, that Result is retried like an exception. See [Retrying failed Results](#retrying-failed-results).
 
 The named methods are static methods of the interface or a base interface, checked at build time: [ZR0009](../diagnostics/ZR0009.md) when one is missing or has the wrong signature, [ZR0010](../diagnostics/ZR0010.md) when `RetryWhen` cannot apply to a method. They run outside the `try` that guards the inner call, so an exception they throw reaches the caller unchanged and is never retried.
@@ -112,6 +111,29 @@ catch (Exception __ex)
 ```
 
 `ct.ThrowIfCancellationRequested()` is emitted only when the method has a `CancellationToken` parameter; without one, the block is just `break;`.
+
+### Declined exceptions and `RethrowDeclined`
+
+By default, an exception `RetryOnException` declines goes through exhaustion, like the last of several failed attempts. A method that throws therefore throws `ResilienceException(ResiliencePolicy.Retry, "All retry attempts failed.", exception)`, although the exception was never retried.
+
+`RethrowDeclined = true` rethrows a declined exception unchanged instead: the original exception, with its original stack trace, exactly as the inner call threw it. Exceptions that are retried until the attempts run out still throw `ResilienceException`.
+
+```csharp
+[Retry(RetryOnException = nameof(IsTransient), RethrowDeclined = true)]
+public interface IOrdersApi
+{
+    ValueTask<Order> GetAsync(string id, CancellationToken ct);
+
+    // A programming error is not worth retrying, and the caller should see it as itself.
+    static bool IsTransient(Exception exception) => exception is not ArgumentException;
+}
+```
+
+- **Result methods are unaffected.** A method returning `Result`, `Result<T>`, `Result<T, ResilienceError>` or `UnitResult<ResilienceError>` never throws, so it returns its exhaustion failure for a declined exception whether `RethrowDeclined` is set or not, carrying the exception where the error type can hold it. `NonThrowing` keeps asserting exactly that. A `Result<T, E>` with any other `E` cannot hold the exception, so it throws, and `RethrowDeclined` applies to it.
+- **The circuit breaker counts a declined exception as a failure** either way.
+- **Without `RetryOnException`,** nothing is declined and `RethrowDeclined` has no effect.
+
+> **Next major:** the next major version of ZeroAlloc.Resilience makes rethrowing the default, because the wrapper reports "All retry attempts failed" when no retry happened. Set `RethrowDeclined = true` now to get that behaviour ahead of the change.
 
 ---
 

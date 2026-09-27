@@ -303,20 +303,23 @@ internal static class ResilienceWriter
         WriteRetryExhaustion(sb, method);
     }
 
-    // An exception RetryOnException declines was never retried, so a method that throws rethrows
-    // it from the catch with `throw;`: the original exception with its original stack, not a
-    // ResilienceException saying every attempt failed. A method that returns failures instead of
-    // throwing leaves the loop and turns it into a failure, as it does any exception. It runs
-    // after the breaker's OnFailure, so a declined exception still counts as a breaker failure.
+    // By default a declined exception leaves the loop through exhaustion, as documented since
+    // RetryOnException shipped. With RethrowDeclined, a method that throws rethrows it from the
+    // catch with `throw;` instead: it was never retried, so it reaches the caller as the original
+    // exception with its original stack, not a ResilienceException saying every attempt failed.
+    // A method that returns failures instead of throwing always leaves the loop and turns it into
+    // a failure, as it does any exception. The check runs after the breaker's OnFailure, so a
+    // declined exception counts as a breaker failure either way.
     private static void WriteRetryOnExceptionCheck(StringBuilder sb, MethodModel method)
     {
         if (method.RetryOnExceptionMethod is null) return;
-        var declined = method.ReturnsFailureResult ? "break;" : "throw;";
+        var rethrow = method.Retry!.RethrowDeclined && !method.ReturnsFailureResult;
+        var declined = rethrow ? "throw;" : "break;";
         sb.AppendLine($"                if (!{method.RetryOnExceptionMethod}(__ex)) {declined}");
     }
 
-    // Every attempt threw, or the total timeout ended the retries after an exception; for a
-    // method that returns failures, also RetryOnException declining the last exception.
+    // Every attempt threw, the total timeout ended the retries after an exception, or
+    // RetryOnException declined the last exception without RethrowDeclined in effect.
     private static void WriteRetryExhaustion(StringBuilder sb, MethodModel method)
     {
         // NonThrowing on a return type that cannot hold a ResilienceError never reaches the writer:

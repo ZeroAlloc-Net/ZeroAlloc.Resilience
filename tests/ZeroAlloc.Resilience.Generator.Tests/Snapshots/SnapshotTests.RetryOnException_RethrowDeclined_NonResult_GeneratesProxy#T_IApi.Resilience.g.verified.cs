@@ -27,11 +27,9 @@ internal sealed class IApiResilienceProxy : global::T.IApi
         _retry = (policies.Retry ?? throw new global::System.ArgumentException("ApiResiliencePolicies.Retry is null.", nameof(policies)));
     }
 
-    public async global::System.Threading.Tasks.ValueTask<global::ZeroAlloc.Results.Result<string, global::T.HttpError>> GetAsync(string id, global::System.Threading.CancellationToken ct)
+    public async global::System.Threading.Tasks.ValueTask<string> GetAsync(string id, global::System.Threading.CancellationToken ct)
     {
         global::System.Exception? __lastEx = null;
-        global::ZeroAlloc.Results.Result<string, global::T.HttpError> __lastResult = default;
-        bool __lastWasResult = false;
         for (int __attempt = 0; __attempt < _retry.MaxAttempts; __attempt++)
         {
             using var __attemptCts = _retry.PerAttemptTimeoutMs > 0
@@ -39,11 +37,10 @@ internal sealed class IApiResilienceProxy : global::T.IApi
                 : null;
             __attemptCts?.CancelAfter(_retry.PerAttemptTimeoutMs);
             var __ct = __attemptCts?.Token ?? ct;
-            global::System.TimeSpan? __hint = null;
             try
             {
-                __lastResult = await _inner.GetAsync(id, __ct).ConfigureAwait(false);
-                __lastWasResult = true;
+                var __result = await _inner.GetAsync(id, __ct).ConfigureAwait(false);
+                return __result;
             }
             catch (global::System.OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -52,23 +49,34 @@ internal sealed class IApiResilienceProxy : global::T.IApi
             catch (global::System.Exception __ex)
             {
                 __lastEx = __ex;
-                __lastWasResult = false;
-                if (!global::T.IApi.IsTransientException(__ex)) break;
-                __hint = global::T.IApi.RetryAfter(__ex);
+                if (!global::T.IApi.IsTransient(__ex)) throw;
+                if (__attempt == _retry.MaxAttempts - 1) break;
+                await global::System.Threading.Tasks.Task.Delay(_retry.GetBackoffMs(__attempt), ct).ConfigureAwait(false);
             }
-            if (__lastWasResult)
-            {
-                if (__lastResult.IsSuccess || !global::T.IApi.IsTransient(__lastResult.Error))
-                {
-                    return __lastResult;
-                }
-                __hint = global::T.IApi.RetryAfter(__lastResult.Error);
-            }
-            if (__attempt == _retry.MaxAttempts - 1) break;
-            await global::System.Threading.Tasks.Task.Delay(_retry.GetDelayMs(__attempt, __hint), ct).ConfigureAwait(false);
         }
-        // All attempts exhausted, or a failure that is not retried
-        if (__lastWasResult) return __lastResult;
+        // All attempts exhausted
+        throw new global::ZeroAlloc.Resilience.ResilienceException(global::ZeroAlloc.Resilience.ResiliencePolicy.Retry, "All retry attempts failed.", __lastEx);
+    }
+
+    public string Get(string id)
+    {
+        global::System.Exception? __lastEx = null;
+        for (int __attempt = 0; __attempt < _retry.MaxAttempts; __attempt++)
+        {
+            try
+            {
+                var __result = _inner.Get(id);
+                return __result;
+            }
+            catch (global::System.Exception __ex)
+            {
+                __lastEx = __ex;
+                if (!global::T.IApi.IsTransient(__ex)) throw;
+                if (__attempt == _retry.MaxAttempts - 1) break;
+                global::System.Threading.Thread.Sleep(_retry.GetBackoffMs(__attempt));
+            }
+        }
+        // All attempts exhausted
         throw new global::ZeroAlloc.Resilience.ResilienceException(global::ZeroAlloc.Resilience.ResiliencePolicy.Retry, "All retry attempts failed.", __lastEx);
     }
 

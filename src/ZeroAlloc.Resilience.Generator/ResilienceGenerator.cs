@@ -1114,7 +1114,8 @@ public sealed partial class ResilienceGenerator : IIncrementalGenerator
             MaxDelayMs: TryGetInt(attr, "MaxDelayMs", out var maxDelayMs) ? maxDelayMs : null,
             RetryWhen: GetString(attr, "RetryWhen"),
             RetryOnException: GetString(attr, "RetryOnException"),
-            DelayHint: GetString(attr, "DelayHint"));
+            DelayHint: GetString(attr, "DelayHint"),
+            RethrowDeclined: GetBool(attr, "RethrowDeclined", false));
     }
 
     private static TimeoutConfig? ParseTimeout(AttributeData? attr)

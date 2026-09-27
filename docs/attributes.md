@@ -18,7 +18,8 @@ All attributes target `Interface` and `Method`. Method-level declarations shadow
 | `PerAttemptTimeoutMs` | `int` | `0` | Per-attempt timeout (0 = disabled) |
 | `NonThrowing` | `bool` | `false` | Asserts a `ResilienceError` Result return type |
 | `RetryWhen` | `string?` | `null` | Static `bool M(E error)`: retry the failed Results it returns `true` for; a transient one is a breaker failure, any other a success |
-| `RetryOnException` | `string?` | `null` | Static `bool M(Exception exception)`: `false` stops the retries and rethrows the exception unwrapped |
+| `RetryOnException` | `string?` | `null` | Static `bool M(Exception exception)`: `false` stops the retries |
+| `RethrowDeclined` | `bool` | `false` | Rethrow an exception `RetryOnException` declines unchanged, instead of wrapping it in `ResilienceException` |
 | `DelayHint` | `string?` | `null` | Static `TimeSpan? M(E error)` and/or `TimeSpan? M(Exception exception)`: the next wait, without jitter |
 | `MaxDelayMs` | `int` | no cap | Longest wait between attempts, backoff or hint |
 

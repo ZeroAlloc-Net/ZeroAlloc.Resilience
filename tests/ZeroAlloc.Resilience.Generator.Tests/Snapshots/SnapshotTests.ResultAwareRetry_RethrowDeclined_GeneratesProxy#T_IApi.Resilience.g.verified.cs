@@ -39,7 +39,6 @@ internal sealed class IApiResilienceProxy : global::T.IApi
                 : null;
             __attemptCts?.CancelAfter(_retry.PerAttemptTimeoutMs);
             var __ct = __attemptCts?.Token ?? ct;
-            global::System.TimeSpan? __hint = null;
             try
             {
                 __lastResult = await _inner.GetAsync(id, __ct).ConfigureAwait(false);
@@ -53,8 +52,7 @@ internal sealed class IApiResilienceProxy : global::T.IApi
             {
                 __lastEx = __ex;
                 __lastWasResult = false;
-                if (!global::T.IApi.IsTransientException(__ex)) break;
-                __hint = global::T.IApi.RetryAfter(__ex);
+                if (!global::T.IApi.IsTransientException(__ex)) throw;
             }
             if (__lastWasResult)
             {
@@ -62,10 +60,9 @@ internal sealed class IApiResilienceProxy : global::T.IApi
                 {
                     return __lastResult;
                 }
-                __hint = global::T.IApi.RetryAfter(__lastResult.Error);
             }
             if (__attempt == _retry.MaxAttempts - 1) break;
-            await global::System.Threading.Tasks.Task.Delay(_retry.GetDelayMs(__attempt, __hint), ct).ConfigureAwait(false);
+            await global::System.Threading.Tasks.Task.Delay(_retry.GetBackoffMs(__attempt), ct).ConfigureAwait(false);
         }
         // All attempts exhausted, or a failure that is not retried
         if (__lastWasResult) return __lastResult;
