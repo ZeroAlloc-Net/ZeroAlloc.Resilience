@@ -73,3 +73,4 @@ services.AddExternalServiceResilience<ExternalServiceImpl>();
 | [ZR0010](diagnostics/ZR0010.md) | Error / Warning | Result-aware retry cannot apply to method |
 | [ZR0011](diagnostics/ZR0011.md) | Warning | `[RetryAttempt]` has no effect without `[Retry]` |
 | [ZR0012](diagnostics/ZR0012.md) | Error | `[RetryAttempt]` parameter type not supported |
+| [ZR0013](diagnostics/ZR0013.md) | Warning | RethrowDeclined has no effect |

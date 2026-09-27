@@ -252,4 +252,49 @@ public class SnapshotTests
             """;
         TestHelper.Verify<ResilienceGenerator>(source);
     }
+
+    // #195: with RethrowDeclined, a declined exception is rethrown from the catch with `throw;`,
+    // in the exception-only loop and in the Result-aware loop of a foreign error type.
+    [Fact]
+    public void RetryOnException_RethrowDeclined_NonResult_GeneratesProxy()
+    {
+        var source = """
+            using System;
+            using System.Threading;
+            using System.Threading.Tasks;
+            using ZeroAlloc.Resilience;
+            namespace T;
+            [Retry(MaxAttempts = 3, BackoffMs = 100, RetryOnException = nameof(IsTransient), RethrowDeclined = true)]
+            public interface IApi
+            {
+                ValueTask<string> GetAsync(string id, CancellationToken ct);
+                string Get(string id);
+                static bool IsTransient(Exception exception) => exception is not ArgumentException;
+            }
+            """;
+        TestHelper.Verify<ResilienceGenerator>(source);
+    }
+
+    [Fact]
+    public void ResultAwareRetry_RethrowDeclined_GeneratesProxy()
+    {
+        var source = """
+            using System;
+            using System.Threading;
+            using System.Threading.Tasks;
+            using ZeroAlloc.Resilience;
+            using ZeroAlloc.Results;
+            namespace T;
+            public sealed class HttpError { public int Status { get; init; } }
+            [Retry(MaxAttempts = 3, BackoffMs = 100, RetryWhen = nameof(IsTransient),
+                   RetryOnException = nameof(IsTransientException), RethrowDeclined = true)]
+            public interface IApi
+            {
+                ValueTask<Result<string, HttpError>> GetAsync(string id, CancellationToken ct);
+                static bool IsTransient(HttpError error) => error.Status == 429;
+                static bool IsTransientException(Exception exception) => exception is not ArgumentException;
+            }
+            """;
+        TestHelper.Verify<ResilienceGenerator>(source);
+    }
 }

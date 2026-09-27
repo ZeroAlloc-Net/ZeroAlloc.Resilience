@@ -286,8 +286,7 @@ internal static class ResilienceWriter
             sb.AppendLine($"                {method.CircuitBreakerSlot!.FieldName}.OnFailure(__ex);");
         // RetryOnException and the Exception overload of DelayHint run in the catch block, which
         // is outside the try it guards: an exception they throw reaches the caller unchanged.
-        if (method.RetryOnExceptionMethod is not null)
-            sb.AppendLine($"                if (!{method.RetryOnExceptionMethod}(__ex)) break;");
+        WriteRetryOnExceptionCheck(sb, method);
         var delay = $"{retry}.GetBackoffMs(__attempt)";
         if (method.ExceptionDelayHintMethod is not null)
         {
@@ -304,13 +303,29 @@ internal static class ResilienceWriter
         WriteRetryExhaustion(sb, method);
     }
 
+    // By default a declined exception leaves the loop through exhaustion, as documented since
+    // RetryOnException shipped. With RethrowDeclined, a method that throws rethrows it from the
+    // catch with `throw;` instead: it was never retried, so it reaches the caller as the original
+    // exception with its original stack, not a ResilienceException saying every attempt failed.
+    // A method that returns failures instead of throwing always leaves the loop and turns it into
+    // a failure, as it does any exception. The check runs after the breaker's OnFailure, so a
+    // declined exception counts as a breaker failure either way.
+    private static void WriteRetryOnExceptionCheck(StringBuilder sb, MethodModel method)
+    {
+        if (method.RetryOnExceptionMethod is null) return;
+        var rethrow = method.Retry!.RethrowDeclined && !method.ReturnsFailureResult;
+        var declined = rethrow ? "throw;" : "break;";
+        sb.AppendLine($"                if (!{method.RetryOnExceptionMethod}(__ex)) {declined}");
+    }
+
     // The arguments of the inner call inside the retry loop: the attempt's token in place of the
     // caller's, and the retry number for a [RetryAttempt] parameter.
     private static string RetryCallArguments(MethodModel method) =>
         method.RetryArgumentList
         ?? (method.HasCancellationToken ? method.ArgumentListWithToken : method.ArgumentList);
 
-    // Every attempt threw, or RetryOnException declined the last exception.
+    // Every attempt threw, the total timeout ended the retries after an exception, or
+    // RetryOnException declined the last exception without RethrowDeclined in effect.
     private static void WriteRetryExhaustion(StringBuilder sb, MethodModel method)
     {
         // NonThrowing on a return type that cannot hold a ResilienceError never reaches the writer:
@@ -381,8 +396,7 @@ internal static class ResilienceWriter
         sb.AppendLine("                __lastWasResult = false;");
         if (breaker is not null)
             sb.AppendLine($"                {breaker}.OnFailure(__ex);");
-        if (method.RetryOnExceptionMethod is not null)
-            sb.AppendLine($"                if (!{method.RetryOnExceptionMethod}(__ex)) break;");
+        WriteRetryOnExceptionCheck(sb, method);
         if (method.ExceptionDelayHintMethod is not null)
             sb.AppendLine($"                __hint = {method.ExceptionDelayHintMethod}(__ex);");
         sb.AppendLine("            }");

@@ -81,6 +81,8 @@ ZeroAlloc.Resilience.RetryAttribute.NonThrowing.get -> bool
 ZeroAlloc.Resilience.RetryAttribute.NonThrowing.init -> void
 ZeroAlloc.Resilience.RetryAttribute.PerAttemptTimeoutMs.get -> int
 ZeroAlloc.Resilience.RetryAttribute.PerAttemptTimeoutMs.init -> void
+ZeroAlloc.Resilience.RetryAttribute.RethrowDeclined.get -> bool
+ZeroAlloc.Resilience.RetryAttribute.RethrowDeclined.init -> void
 ZeroAlloc.Resilience.RetryAttribute.RetryAttribute() -> void
 ZeroAlloc.Resilience.RetryAttribute.RetryOnException.get -> string?
 ZeroAlloc.Resilience.RetryAttribute.RetryOnException.init -> void

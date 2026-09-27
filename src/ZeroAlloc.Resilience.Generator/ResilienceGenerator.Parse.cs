@@ -70,6 +70,26 @@ public sealed partial class ResilienceGenerator
             ValidateAttributeValues(Diagnostics, RateLimitAttr, RateLimitRules, Iface.Name, IfaceLocation);
             ValidateAttributeValues(Diagnostics, CircuitBreakerAttr, CircuitBreakerRules, Iface.Name, IfaceLocation);
             ValidateRetryMemberNames(Diagnostics, RetryAttr, RetryLookup, errorTypeDisplay: null, IfaceLocation);
+            if (ClassRetry is { RethrowDeclined: true, RetryOnException: null })
+                ReportRethrowDeclinedHasNoEffect(Diagnostics, RetryAttr!, IfaceLocation, Iface.Name, NoRetryOnException);
+        }
+
+        // The methods the interface-level [Retry] applies to, by whether they throw. ZR0013 for
+        // a RethrowDeclined that none of them can use; see ReportUnusedInterfaceRethrowDeclined.
+        public int ClassRetryThrowingMethods { get; set; }
+        public int ClassRetryFailureMethods { get; set; }
+
+        // ZR0013 for an interface-level [Retry(RethrowDeclined = true)] whose methods all return
+        // failures instead of throwing. A mix is not reported: the property works on the throwing
+        // methods, and the Result methods need no change.
+        public void ReportUnusedInterfaceRethrowDeclined()
+        {
+            if (ClassRetry is not { RethrowDeclined: true, RetryOnException: not null }
+                || ClassRetryThrowingMethods > 0 || ClassRetryFailureMethods == 0)
+                return;
+            ReportRethrowDeclinedHasNoEffect(Diagnostics, RetryAttr!, IfaceLocation, Iface.Name,
+                ("every method it applies to returns a failure instead of throwing, for a declined exception too",
+                 "Remove RethrowDeclined"));
         }
 
         // The interface-level slots come first, before any method's own.

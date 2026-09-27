@@ -101,6 +101,7 @@ Each policy runs before the inner call is even attempted. If the rate limiter re
 | `NonThrowing` | `bool` | `false` | Asserts a `ResilienceError` Result return type |
 | `RetryWhen` | `string?` | `null` | Static `bool M(E error)`: retry the failed Results it returns `true` for; a transient one is a breaker failure, any other a success |
 | `RetryOnException` | `string?` | `null` | Static `bool M(Exception exception)`: `false` stops the retries |
+| `RethrowDeclined` | `bool` | `false` | Rethrow an exception `RetryOnException` declines unchanged, instead of wrapping it in `ResilienceException` |
 | `DelayHint` | `string?` | `null` | Static `TimeSpan? M(E error)` and/or `TimeSpan? M(Exception exception)`: the next wait, without jitter |
 | `MaxDelayMs` | `int` | no cap | Longest wait between attempts, backoff or hint |
 
@@ -198,6 +199,7 @@ catch (ResilienceException ex) when (ex.Policy == ResiliencePolicy.CircuitBreake
 | [ZR0010](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/diagnostics/ZR0010.md) | Error / Warning | Result-aware retry cannot apply to method |
 | [ZR0011](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/diagnostics/ZR0011.md) | Warning | `[RetryAttempt]` has no effect without `[Retry]` |
 | [ZR0012](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/diagnostics/ZR0012.md) | Error | `[RetryAttempt]` parameter type not supported |
+| [ZR0013](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/diagnostics/ZR0013.md) | Warning | RethrowDeclined has no effect |
 
 ---
 

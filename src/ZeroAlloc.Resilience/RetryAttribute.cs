@@ -38,10 +38,23 @@ public sealed class RetryAttribute : Attribute
 
     /// <summary>
     /// The name of a static method <c>bool M(Exception exception)</c> on the interface or a base
-    /// interface. A thrown exception it returns <see langword="false"/> for ends the retries.
-    /// Default: <see langword="null"/>, every exception is retried.
+    /// interface. A thrown exception it returns <see langword="false"/> for ends the retries, and
+    /// goes through the same exhaustion as the last of several failed attempts, unless
+    /// <see cref="RethrowDeclined"/> is set. Default: <see langword="null"/>, every exception is
+    /// retried.
     /// </summary>
     public string? RetryOnException { get; init; }
+
+    /// <summary>
+    /// When <see langword="true"/>, an exception <see cref="RetryOnException"/> declines is
+    /// rethrown unchanged, with its original stack trace, instead of being wrapped in a
+    /// <see cref="ResilienceException"/> that says every retry attempt failed. A method returning
+    /// <c>Result</c>, <c>Result&lt;T&gt;</c>, <c>Result&lt;T, ResilienceError&gt;</c> or
+    /// <c>UnitResult&lt;ResilienceError&gt;</c> never throws, so it returns a failure either way.
+    /// Has no effect without <see cref="RetryOnException"/>. Default: <see langword="false"/>;
+    /// the next major version makes rethrowing the default.
+    /// </summary>
+    public bool RethrowDeclined { get; init; }
 
     /// <summary>
     /// The name of a static method, or overload set, on the interface or a base interface:
