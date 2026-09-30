@@ -53,10 +53,9 @@ public class HintNameTests
         compilation.GetTypeByMetadataName("A.B_ICResilienceProxy").Should().NotBeNull();
     }
 
-    // Only the file names are asserted: the generated policies and proxy classes of the two
-    // interfaces still share a name and do not compile together, which is #209.
+    // Their generated names are qualified so the two compile together, see NameCollisionTests.
     [Fact]
-    public void SameNamedNestedInterfaces_EachGetTheirOwnFile()
+    public void SameNamedNestedInterfaces_EachGetTheirOwnFile_AndCompile()
     {
         var source = """
             using System.Threading;
@@ -76,6 +75,7 @@ public class HintNameTests
             """;
 
         HintNames(source).Should().Equal("N.First+IFoo.Resilience.g.cs", "N.Second+IFoo.Resilience.g.cs");
+        TestHelper.RunAndCompile(source).Errors.Should().BeEmpty();
     }
 
     [Fact]

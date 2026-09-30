@@ -46,6 +46,9 @@ public sealed partial class ResilienceGenerator : IIncrementalGenerator
     // Tracking name of the DI detection step, so tests can assert it stays cached across edits.
     internal const string DependencyInjectionTrackingName = "DependencyInjectionAvailable";
 
+    // Tracking name of the step that finds colliding generated names (#209).
+    internal const string NameCollisionsTrackingName = "NameCollisions";
+
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         var candidates = context.SyntaxProvider.CreateSyntaxProvider(
@@ -77,6 +80,8 @@ public sealed partial class ResilienceGenerator : IIncrementalGenerator
                 EmitDependencyInjection = pair.Right,
             });
 
+        var namedModels = QualifyCollidingNames(modelsWithAccessibility);
+
         RegisterRetryAttemptDiagnostics(context);
 
         context.RegisterSourceOutput(accessibility, static (ctx, result) =>
@@ -85,7 +90,7 @@ public sealed partial class ResilienceGenerator : IIncrementalGenerator
                 ctx.ReportDiagnostic(result.Diagnostic);
         });
 
-        context.RegisterSourceOutput(modelsWithAccessibility, static (ctx, model) =>
+        context.RegisterSourceOutput(namedModels, static (ctx, model) =>
         {
             foreach (var diag in model.Diagnostics)
                 ctx.ReportDiagnostic(diag);
@@ -98,6 +103,28 @@ public sealed partial class ResilienceGenerator : IIncrementalGenerator
             var source = ResilienceWriter.Write(model);
             ctx.AddSource(model.HintName, source);
         });
+    }
+
+    // #209: every interface keeps its generated names unless another interface in its namespace
+    // would get the same policies class, proxy or Add...Resilience name; those are qualified with
+    // their containing types. Only small name keys are collected, and the result is the sorted
+    // hint names to qualify, so an edit that changes no name leaves every output cached.
+    private static IncrementalValuesProvider<ResilienceModel> QualifyCollidingNames(
+        IncrementalValuesProvider<ResilienceModel> models)
+    {
+        var qualified = models
+            .Select(static (model, _) => NameCollisions.KeyOf(model))
+            .Where(static key => key is not null)
+            .Select(static (key, _) => key!)
+            .Collect()
+            .Select(static (keys, _) => NameCollisions.Find(keys))
+            .WithTrackingName(NameCollisionsTrackingName);
+
+        return models
+            .Combine(qualified)
+            .Select(static (pair, _) => pair.Right.Contains(pair.Left.HintName)
+                ? NameCollisions.Qualify(pair.Left)
+                : pair.Left);
     }
 
     private static bool ReferencesServiceCollection(ImmutableArray<MetadataReference> references) =>
@@ -233,6 +260,9 @@ public sealed partial class ResilienceGenerator : IIncrementalGenerator
             // Overwritten in Initialize from the compilation's references, like EmitPublicEntryPoints.
             EmitDependencyInjection: true,
             PoliciesClassName: ServiceName(iface.Name) + "ResiliencePolicies",
+            ProxyClassName: iface.Name + "ResilienceProxy",
+            RegistrationName: ServiceName(iface.Name),
+            QualifyingPrefix: NameCollisions.QualifyingPrefix(iface),
             Slots: state.Slots.ToImmutable(),
             ClassRetry: state.ClassRetry,
             ClassTimeout: state.ClassTimeout,
@@ -1564,6 +1594,9 @@ public sealed partial class ResilienceGenerator : IIncrementalGenerator
             EmitPublicEntryPoints: false,
             EmitDependencyInjection: false,
             PoliciesClassName: ServiceName(iface.Name) + "ResiliencePolicies",
+            ProxyClassName: iface.Name + "ResilienceProxy",
+            RegistrationName: ServiceName(iface.Name),
+            QualifyingPrefix: NameCollisions.QualifyingPrefix(iface),
             Slots: ImmutableArray<PolicySlot>.Empty,
             ClassRetry: null,
             ClassTimeout: null,
