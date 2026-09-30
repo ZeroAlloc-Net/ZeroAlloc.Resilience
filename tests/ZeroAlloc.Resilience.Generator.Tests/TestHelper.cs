@@ -27,6 +27,7 @@ internal static class TestHelper
             .Cast<MetadataReference>()
             .Append(MetadataReference.CreateFromFile(typeof(RetryAttribute).Assembly.Location))
             .Append(MetadataReference.CreateFromFile(typeof(ZeroAlloc.Results.Result).Assembly.Location))
+            .Append(DependencyInjectionReference)
             .ToList();
 
         var compilation = CSharpCompilation.Create(
@@ -54,6 +55,7 @@ internal static class TestHelper
             .Cast<MetadataReference>()
             .Append(MetadataReference.CreateFromFile(typeof(RetryAttribute).Assembly.Location))
             .Append(MetadataReference.CreateFromFile(typeof(ZeroAlloc.Results.Result).Assembly.Location))
+            .Append(DependencyInjectionReference)
             .ToList();
 
         var compilation = CSharpCompilation.Create(
@@ -167,7 +169,7 @@ internal static class TestHelper
 
     // Runtime framework references only, instead of every assembly loaded in the test domain:
     // anything the test host happens to load could otherwise hide a missing reference.
-    private static readonly MetadataReference[] CompileReferences =
+    private static readonly MetadataReference[] CompileReferencesWithoutDependencyInjection =
         ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
             .Split(Path.PathSeparator)
             .Where(static p => Path.GetFileName(p).StartsWith("System.", StringComparison.Ordinal)
@@ -176,20 +178,36 @@ internal static class TestHelper
             .Select(static p => (MetadataReference)MetadataReference.CreateFromFile(p))
             .Append(MetadataReference.CreateFromFile(typeof(RetryAttribute).Assembly.Location))
             .Append(MetadataReference.CreateFromFile(typeof(ZeroAlloc.Results.Result).Assembly.Location))
-            .Append(MetadataReference.CreateFromFile(typeof(Microsoft.Extensions.DependencyInjection.IServiceCollection).Assembly.Location))
             .ToArray();
+
+    // The generator emits the DI extensions only when the compilation references IServiceCollection
+    // (#200), so every helper that expects them references the abstractions explicitly instead of
+    // relying on the test host having loaded the assembly already.
+    private static readonly MetadataReference DependencyInjectionReference =
+        MetadataReference.CreateFromFile(typeof(Microsoft.Extensions.DependencyInjection.IServiceCollection).Assembly.Location);
+
+    private static readonly MetadataReference[] CompileReferences =
+        CompileReferencesWithoutDependencyInjection.Append(DependencyInjectionReference).ToArray();
+
+    /// <summary>
+    /// Creates the compilation <see cref="RunAndCompile"/> runs the generator on, with or without
+    /// Microsoft.Extensions.DependencyInjection.Abstractions among its references.
+    /// </summary>
+    public static CSharpCompilation CreateCompilation(string source, bool referenceDependencyInjection) =>
+        CSharpCompilation.Create(
+            "TestAssembly",
+            new[] { CSharpSyntaxTree.ParseText(source, ParseOptions) },
+            referenceDependencyInjection ? CompileReferences : CompileReferencesWithoutDependencyInjection,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
     /// <summary>
     /// Runs the generator and compiles its output together with <paramref name="source"/>.
     /// Returns the updated compilation and every error, from the generator or the compiler.
     /// </summary>
-    public static (Compilation Compilation, ImmutableArray<Diagnostic> Errors) RunAndCompile(string source, string? generatedAccessibility = null)
+    public static (Compilation Compilation, ImmutableArray<Diagnostic> Errors) RunAndCompile(
+        string source, string? generatedAccessibility = null, bool referenceDependencyInjection = true)
     {
-        var compilation = CSharpCompilation.Create(
-            "TestAssembly",
-            new[] { CSharpSyntaxTree.ParseText(source, ParseOptions) },
-            CompileReferences,
-            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        var compilation = CreateCompilation(source, referenceDependencyInjection);
 
         var driver = CSharpGeneratorDriver
             .Create(new ResilienceGenerator())

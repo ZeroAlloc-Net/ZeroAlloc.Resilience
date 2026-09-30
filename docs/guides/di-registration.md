@@ -8,6 +8,8 @@ sidebar_position: 4
 
 The generator emits three extension methods on `IServiceCollection` for each annotated interface: `Add{Name}Resilience<TImpl>()`, an overload that takes a `configure` callback, and `Add{Name}ResiliencePolicies()` for hosts that build the proxy themselves.
 
+The extension methods, and the `using Microsoft.Extensions.DependencyInjection;` in the generated file, are emitted only when the project references `Microsoft.Extensions.DependencyInjection.Abstractions`, detected through `IServiceCollection`. See [Without DI](#without-di).
+
 ---
 
 ## Basic registration
@@ -207,6 +209,8 @@ builder.Services.AddScoped<IExternalService>(sp =>
 ---
 
 ## Without DI
+
+When the project does not reference `Microsoft.Extensions.DependencyInjection.Abstractions`, the generator emits only the policies class and the proxy, with no DI extension methods and no `using` for them, so the generated code compiles without the abstractions. The `ZeroAlloc.Resilience` package still depends on them for now; dropping that dependency is held for the next major.
 
 The proxy is a plain class with a two-argument constructor — the inner implementation and a policies instance:
 
