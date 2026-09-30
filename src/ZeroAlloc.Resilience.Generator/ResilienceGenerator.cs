@@ -96,10 +96,7 @@ public sealed partial class ResilienceGenerator : IIncrementalGenerator
             if (hasError) return;
 
             var source = ResilienceWriter.Write(model);
-            var hintName = model.Namespace is null
-                ? $"{model.InterfaceName}.Resilience.g.cs"
-                : $"{model.Namespace}_{model.InterfaceName}.Resilience.g.cs";
-            ctx.AddSource(hintName, source);
+            ctx.AddSource(model.HintName, source);
         });
     }
 
@@ -227,6 +224,7 @@ public sealed partial class ResilienceGenerator : IIncrementalGenerator
             Namespace: ns,
             InterfaceName: iface.Name,
             InterfaceFqn: iface.ToDisplayString(FqnFormat),
+            HintName: HintNames.ForHost(iface),
             IsPublic: isPublic,
             // Overwritten once the accessibility option is combined in, in Initialize; this default
             // matches today's behavior (ZeroAllocGeneratedAccessibility unset == Public) for any
@@ -1561,6 +1559,7 @@ public sealed partial class ResilienceGenerator : IIncrementalGenerator
             Namespace: ns,
             InterfaceName: iface.Name,
             InterfaceFqn: iface.ToDisplayString(FqnFormat),
+            HintName: HintNames.ForHost(iface),
             IsPublic: false,
             EmitPublicEntryPoints: false,
             EmitDependencyInjection: false,

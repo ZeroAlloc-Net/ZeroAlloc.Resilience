@@ -69,7 +69,7 @@ public class CallerCancellationTests
 
         errors.Should().BeEmpty();
         var generated = compilation.SyntaxTrees
-            .First(static t => t.FilePath.EndsWith("Repro_IApi.Resilience.g.cs", System.StringComparison.Ordinal))
+            .First(static t => t.FilePath.EndsWith("Repro.IApi.Resilience.g.cs", System.StringComparison.Ordinal))
             .ToString();
         generated.Should().Contain("ConfigureAwaitOptions.SuppressThrowing");
         generated.Should().NotContain("ThrowIfCancellationRequested");

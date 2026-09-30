@@ -7,6 +7,7 @@ internal sealed record ResilienceModel(
     string? Namespace,
     string InterfaceName,
     string InterfaceFqn,            // e.g. global::MyApp.IExternalService
+    string HintName,                // e.g. MyApp.Outer+IExternalService.Resilience.g.cs, see HintNames
     bool IsPublic,                  // interface and every containing type are public
     // Whether the generated policies class and DI extension methods are emitted public: true when
     // the interface is public AND ZeroAllocGeneratedAccessibility is Public (the default). False

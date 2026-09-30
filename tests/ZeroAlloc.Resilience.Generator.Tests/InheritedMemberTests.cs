@@ -18,7 +18,7 @@ public class InheritedMemberTests
 
     private static string GeneratedSource(Compilation compilation, string name) =>
         compilation.SyntaxTrees
-            .First(t => t.FilePath.EndsWith($"Repro_{name}.Resilience.g.cs", System.StringComparison.Ordinal))
+            .First(t => t.FilePath.EndsWith($"Repro.{name}.Resilience.g.cs", System.StringComparison.Ordinal))
             .ToString();
 
     [Fact]
