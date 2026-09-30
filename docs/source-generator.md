@@ -39,6 +39,22 @@ For an interface carrying all four policies, the generator emits:
 - an `I{Name}ResilienceProxy` class, which implements the interface and reads every value from the policies passed to its constructor
 - three DI extension methods: `Add{Name}ResiliencePolicies`, `Add{Name}Resilience<TImpl>()`, and `Add{Name}Resilience<TImpl>(configure)`, only when the project references `Microsoft.Extensions.DependencyInjection.Abstractions`
 
+All of them are emitted at the top of the interface's namespace, even for an interface nested in another type.
+
+### Same-named interfaces in one namespace
+
+Two interfaces nested in different types can have the same name, such as `First.IFoo` and `Second.IFoo` in namespace `N`. Their generated names would then collide, so both get names qualified with their containing types, joined with underscores:
+
+| | `First.IFoo` | `Second.IFoo` |
+|---|---|---|
+| Policies | `First_FooResiliencePolicies` | `Second_FooResiliencePolicies` |
+| Proxy | `First_IFooResilienceProxy` | `Second_IFooResilienceProxy` |
+| DI | `AddFirst_FooResiliencePolicies`, `AddFirst_FooResilience<TImpl>` | `AddSecond_FooResiliencePolicies`, `AddSecond_FooResilience<TImpl>` |
+
+Only interfaces whose names would collide are qualified. Every other interface keeps the names above, and an interface at the top of its namespace always does, so in `N.IFoo` and `N.Outer.IFoo` only the nested one becomes `Outer_FooResiliencePolicies`. `IFoo` and `Foo` share the name `Foo` and count as a collision too. Interfaces in different namespaces never collide.
+
+Qualification depends on the other interfaces in the project: adding a second `IFoo` in another type of the same namespace renames the generated types of the first. Code that refers to them by name has to follow.
+
 ---
 
 ## Generated output

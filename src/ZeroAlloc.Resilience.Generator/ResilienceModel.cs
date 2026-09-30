@@ -19,7 +19,13 @@ internal sealed record ResilienceModel(
     // through IServiceCollection (#200). A consumer that builds the proxy by hand compiles without
     // the abstractions.
     bool EmitDependencyInjection,
-    string PoliciesClassName,       // e.g. JevApiResiliencePolicies
+    string PoliciesClassName,       // e.g. JevApiResiliencePolicies, or First_JevApiResiliencePolicies, see NameCollisions
+    string ProxyClassName,          // e.g. IJevApiResilienceProxy, or First_IJevApiResilienceProxy
+    string RegistrationName,        // e.g. JevApi in AddJevApiResilience, or First_JevApi
+    // The containing types joined with underscores, each followed by one, as in "Outer_Inner_",
+    // or empty at the top of a namespace. Prefixes the three names above when another interface
+    // in the namespace would get the same name (#209).
+    string QualifyingPrefix,
     ImmutableArray<PolicySlot> Slots,
     RetryConfig? ClassRetry,
     TimeoutConfig? ClassTimeout,

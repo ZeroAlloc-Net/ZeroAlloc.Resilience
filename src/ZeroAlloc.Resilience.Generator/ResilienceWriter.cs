@@ -58,7 +58,7 @@ internal static class ResilienceWriter
         var used = model.Slots.Where(s => model.Methods.Any(m =>
             m.RetrySlot == s || m.TimeoutSlot == s || m.RateLimiterSlot == s || m.CircuitBreakerSlot == s)).ToImmutableArray();
 
-        sb.AppendLine($"internal sealed class {model.InterfaceName}ResilienceProxy : {model.InterfaceFqn}");
+        sb.AppendLine($"internal sealed class {model.ProxyClassName} : {model.InterfaceFqn}");
         sb.AppendLine("{");
         sb.AppendLine($"    private readonly {model.InterfaceFqn} _inner;");
         foreach (var slot in used)
@@ -67,7 +67,7 @@ internal static class ResilienceWriter
 
         // The constructor copies each slot, so changing the policies afterwards only affects
         // proxies created later.
-        sb.AppendLine($"    public {model.InterfaceName}ResilienceProxy({model.InterfaceFqn} inner, {model.PoliciesClassName} policies)");
+        sb.AppendLine($"    public {model.ProxyClassName}({model.InterfaceFqn} inner, {model.PoliciesClassName} policies)");
         sb.AppendLine("    {");
         sb.AppendLine("        global::System.ArgumentNullException.ThrowIfNull(inner);");
         sb.AppendLine("        global::System.ArgumentNullException.ThrowIfNull(policies);");
@@ -749,7 +749,7 @@ internal static class ResilienceWriter
 
     private static void WriteDiExtension(StringBuilder sb, ResilienceModel model)
     {
-        var name = ResilienceGenerator.ServiceName(model.InterfaceName);
+        var name = model.RegistrationName;
         var policies = model.PoliciesClassName;
 
         // Partial declarations must agree on accessibility, so an interface whose entry points are
@@ -786,7 +786,7 @@ internal static class ResilienceWriter
 
     private static void WriteAddResilience(StringBuilder sb, ResilienceModel model, bool withConfigure)
     {
-        var name = ResilienceGenerator.ServiceName(model.InterfaceName);
+        var name = model.RegistrationName;
         var policies = model.PoliciesClassName;
 
         sb.AppendLine($"    public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection Add{name}Resilience<");
@@ -811,7 +811,7 @@ internal static class ResilienceWriter
         sb.AppendLine(withConfigure
             ? $"        services.Add{name}ResiliencePolicies(configure);"
             : $"        services.Add{name}ResiliencePolicies();");
-        sb.AppendLine($"        services.AddTransient<{model.InterfaceFqn}>(sp => new {model.InterfaceName}ResilienceProxy(");
+        sb.AppendLine($"        services.AddTransient<{model.InterfaceFqn}>(sp => new {model.ProxyClassName}(");
         sb.AppendLine($"            sp.GetRequiredService<TImpl>(), sp.GetRequiredService<{policies}>()));");
         sb.AppendLine("        return services;");
         sb.AppendLine("    }");
