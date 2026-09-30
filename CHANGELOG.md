@@ -1,5 +1,14 @@
 # Changelog
 
+## [3.3.1](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v3.3.0...v3.3.1) (2026-09-30)
+
+
+### Bug Fixes
+
+* emit the DI extensions only when IServiceCollection is referenced ([#206](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/206)) ([ff4228c](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/ff4228c321f2a55560a5ae8135147980774cd767)), closes [#200](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/200)
+* **generator:** qualify the generated names of same-named nested interfaces ([#211](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/211)) ([c5aea92](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/c5aea9236aa0e3ef57969f293f76e0f1bb46a685)), closes [#209](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/209)
+* name generated files after the interface's namespace and containing types ([#210](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/210)) ([bcd97bf](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/bcd97bf27af20fe1ddf813717bcce1e70f5d9e48)), closes [#208](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/208)
+
 ## [3.3.0](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v3.2.0...v3.3.0) (2026-09-27)
 
 
