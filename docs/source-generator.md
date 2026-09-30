@@ -232,7 +232,7 @@ public static partial class ResilienceServiceCollectionExtensions
 }
 ```
 
-Copied from `tests/ZeroAlloc.Resilience.Generator.Tests/Snapshots/SnapshotTests.AllPolicies_ClassLevel_GeneratesProxy#T_IExternalService.Resilience.g.verified.cs`, with the `//HintName:` line and the `using` block above it left out for brevity.
+Copied from `tests/ZeroAlloc.Resilience.Generator.Tests/Snapshots/SnapshotTests.AllPolicies_ClassLevel_GeneratesProxy#T.IExternalService.Resilience.g.verified.cs`, with the `//HintName:` line and the `using` block above it left out for brevity.
 
 ---
 
@@ -399,8 +399,13 @@ dotnet build
 # Generated files are under:
 # obj/Debug/{tfm}/generated/ZeroAlloc.Resilience.Generator/
 #   ZeroAlloc.Resilience.Generator.ResilienceGenerator/
-#   {Namespace}_{InterfaceName}.Resilience.g.cs
+#   {Namespace}.{InterfaceName}.Resilience.g.cs
 ```
+
+The file name is the interface's namespace, then its containing types and the interface joined by
+`+`, for example `MyApp.Clients.IWeatherApi.Resilience.g.cs` or
+`MyApp.Clients+IWeatherApi.Resilience.g.cs` for an interface nested in class `Clients`. An interface in
+the global namespace has no namespace part. File names are not a contract and may change.
 
 **Go to Definition:** Place your cursor on the generated proxy constructor or any method and press F12.
 
