@@ -37,7 +37,7 @@ public interface IExternalService
 For an interface carrying all four policies, the generator emits:
 - a `{Name}ResiliencePolicies` class, with one settable slot per policy
 - an `I{Name}ResilienceProxy` class, which implements the interface and reads every value from the policies passed to its constructor
-- three DI extension methods: `Add{Name}ResiliencePolicies`, `Add{Name}Resilience<TImpl>()`, and `Add{Name}Resilience<TImpl>(configure)`
+- three DI extension methods: `Add{Name}ResiliencePolicies`, `Add{Name}Resilience<TImpl>()`, and `Add{Name}Resilience<TImpl>(configure)`, only when the project references `Microsoft.Extensions.DependencyInjection.Abstractions`
 
 ---
 

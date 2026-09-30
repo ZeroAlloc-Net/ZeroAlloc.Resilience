@@ -1,6 +1,7 @@
 namespace ZeroAlloc.Resilience.Generator;
 
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 using System;
@@ -37,6 +38,14 @@ public sealed partial class ResilienceGenerator : IIncrementalGenerator
     // it available here as build_property.<name>.
     private const string GeneratedAccessibilityProperty = "build_property.ZeroAllocGeneratedAccessibility";
 
+    // The generated DI extensions extend IServiceCollection and call the
+    // Microsoft.Extensions.DependencyInjection.Abstractions extension methods, all from that one
+    // assembly, so this type is present exactly when they compile (#200).
+    private const string ServiceCollectionFqn = "Microsoft.Extensions.DependencyInjection.IServiceCollection";
+
+    // Tracking name of the DI detection step, so tests can assert it stays cached across edits.
+    internal const string DependencyInjectionTrackingName = "DependencyInjectionAvailable";
+
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         var candidates = context.SyntaxProvider.CreateSyntaxProvider(
@@ -50,11 +59,22 @@ public sealed partial class ResilienceGenerator : IIncrementalGenerator
         var accessibility = context.AnalyzerConfigOptionsProvider
             .Select(static (provider, _) => ParseGeneratedAccessibility(provider));
 
+        // #200: keyed on the metadata references, not on the compilation, so a source edit does not
+        // run the lookup again; only adding or removing a reference does. The probe compilation holds
+        // the references alone, so GetTypeByMetadataName resolves IServiceCollection exactly as the
+        // consumer's compilation would, forwarded types included, and nothing retains it afterwards.
+        var dependencyInjection = context.MetadataReferencesProvider
+            .Collect()
+            .Select(static (references, _) => ReferencesServiceCollection(references))
+            .WithTrackingName(DependencyInjectionTrackingName);
+
         var modelsWithAccessibility = models
             .Combine(accessibility.Select(static (result, _) => result.Mode))
-            .Select(static (pair, _) => pair.Left with
+            .Combine(dependencyInjection)
+            .Select(static (pair, _) => pair.Left.Left with
             {
-                EmitPublicEntryPoints = pair.Left.IsPublic && pair.Right == GeneratedAccessibilityMode.Public,
+                EmitPublicEntryPoints = pair.Left.Left.IsPublic && pair.Left.Right == GeneratedAccessibilityMode.Public,
+                EmitDependencyInjection = pair.Right,
             });
 
         RegisterRetryAttemptDiagnostics(context);
@@ -82,6 +102,11 @@ public sealed partial class ResilienceGenerator : IIncrementalGenerator
             ctx.AddSource(hintName, source);
         });
     }
+
+    private static bool ReferencesServiceCollection(ImmutableArray<MetadataReference> references) =>
+        CSharpCompilation
+            .Create(assemblyName: null, syntaxTrees: null, references: references)
+            .GetTypeByMetadataName(ServiceCollectionFqn) is not null;
 
     // ZR0008: "Public" and "Internal" are the only allowed values, compared case-insensitively; an
     // unset or empty property defaults to Public, unchanged since before #152. Any other value is
@@ -207,6 +232,8 @@ public sealed partial class ResilienceGenerator : IIncrementalGenerator
             // matches today's behavior (ZeroAllocGeneratedAccessibility unset == Public) for any
             // code path that reads the model before that combine runs.
             EmitPublicEntryPoints: isPublic,
+            // Overwritten in Initialize from the compilation's references, like EmitPublicEntryPoints.
+            EmitDependencyInjection: true,
             PoliciesClassName: ServiceName(iface.Name) + "ResiliencePolicies",
             Slots: state.Slots.ToImmutable(),
             ClassRetry: state.ClassRetry,
@@ -1536,6 +1563,7 @@ public sealed partial class ResilienceGenerator : IIncrementalGenerator
             InterfaceFqn: iface.ToDisplayString(FqnFormat),
             IsPublic: false,
             EmitPublicEntryPoints: false,
+            EmitDependencyInjection: false,
             PoliciesClassName: ServiceName(iface.Name) + "ResiliencePolicies",
             Slots: ImmutableArray<PolicySlot>.Empty,
             ClassRetry: null,

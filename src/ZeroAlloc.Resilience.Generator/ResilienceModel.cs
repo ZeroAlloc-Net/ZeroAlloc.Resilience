@@ -13,6 +13,11 @@ internal sealed record ResilienceModel(
     // for an internal interface (unchanged since #146) and for a public interface when the project
     // opts into ZeroAllocGeneratedAccessibility=Internal (#152). The proxy is always internal.
     bool EmitPublicEntryPoints,
+    // Whether the DI extension methods and their `using` are emitted: true only when the
+    // compilation references Microsoft.Extensions.DependencyInjection.Abstractions, detected
+    // through IServiceCollection (#200). A consumer that builds the proxy by hand compiles without
+    // the abstractions.
+    bool EmitDependencyInjection,
     string PoliciesClassName,       // e.g. JevApiResiliencePolicies
     ImmutableArray<PolicySlot> Slots,
     RetryConfig? ClassRetry,

@@ -16,7 +16,8 @@ internal static class ResilienceWriter
         sb.AppendLine("using System.Threading;");
         sb.AppendLine("using System.Threading.Tasks;");
         sb.AppendLine("using ZeroAlloc.Resilience;");
-        sb.AppendLine("using Microsoft.Extensions.DependencyInjection;");
+        if (model.EmitDependencyInjection)
+            sb.AppendLine("using Microsoft.Extensions.DependencyInjection;");
         sb.AppendLine();
 
         if (model.Namespace is not null)
@@ -28,8 +29,11 @@ internal static class ResilienceWriter
         WritePolicies(sb, model);
         sb.AppendLine();
         WriteProxy(sb, model);
-        sb.AppendLine();
-        WriteDiExtension(sb, model);
+        if (model.EmitDependencyInjection)
+        {
+            sb.AppendLine();
+            WriteDiExtension(sb, model);
+        }
 
         return sb.ToString();
     }
