@@ -71,7 +71,7 @@ public class PollyComparisonBenchmark
     {
         var retry = new RetryPolicy(3, 1, false, 0);
         var cb = new CircuitBreakerPolicy(5, 1_000, 1);
-        var rl = new RateLimiter(1_000_000, 1_000_000, RateLimitScope.Shared);
+        var rl = new RateLimiter(int.MaxValue, int.MaxValue, RateLimitScope.Shared);
 
         _zaRetry = new IRetryServiceResilienceProxy(_inner, new RetryServiceResiliencePolicies { Retry = retry });
         _zaCb = new ICircuitServiceResilienceProxy(_inner, new CircuitServiceResiliencePolicies { CircuitBreaker = cb });

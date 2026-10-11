@@ -42,12 +42,12 @@ Rate-limit and timeout limits in the all-policies harness are set to `int.MaxVal
 | Retry proxy — first attempt succeeds | ~8 ns | 0 B |
 | CircuitBreaker proxy — Closed state | ~12 ns | 0 B |
 | RateLimit proxy — token available | ~18 ns | 0 B |
-| All-policies proxy — happy path | ~35 ns | 96 B † |
+| All-policies proxy — happy path | ~35 ns | 144 B † |
 | CircuitBreaker proxy — Open (fast-reject) | ~4 ns | 0 B |
 | RateLimit proxy — exhausted (fast-reject) | ~3 ns | 0 B |
 | Retry proxy — 2 failures then success | ~1.2 ms ‡ | 0 B |
 
-† The 96 B in the all-policies benchmark comes from the `CancellationTokenSource` created by `[Timeout]`. Without `[Timeout]`, the proxy allocates 0 bytes.
+† The 144 B in the all-policies benchmark is the linked `CancellationTokenSource` created by `[Timeout]` plus the timer its `CancelAfter` starts. Without `[Timeout]`, the proxy allocates 0 bytes. `HappyPathAllocationTests` asserts both budgets on every test run.
 
 ‡ The 2-failure retry benchmark includes real `Task.Delay(backoff)` pauses (`BackoffMs = 1`). Mean reflects wall-clock delay, not CPU overhead.
 
@@ -61,7 +61,7 @@ Rate-limit and timeout limits in the all-policies harness are set to `int.MaxVal
 
 **RateLimit — token available** — `TryAcquire()` is a `Volatile.Read` + `Interlocked.CompareExchange`. Token decremented, call passes through. Zero allocation.
 
-**All-policies — happy path** — rate-limit check, CB check, `CancellationTokenSource.CreateLinkedTokenSource` (96 B), `CancelAfter`, per-attempt linked CTS (linked to total), inner call, `OnSuccess`, return. The 96 B is the `CancellationTokenSource` — unavoidable for timeout.
+**All-policies — happy path** — rate-limit check, CB check, `CancellationTokenSource.CreateLinkedTokenSource`, `CancelAfter`, inner call, `OnSuccess`, return. The 144 B is the `CancellationTokenSource` and its `CancelAfter` timer — unavoidable for timeout. A per-attempt linked CTS is added only when `PerAttemptTimeoutMs` is set.
 
 **CB — Open (fast-reject)** — `CanExecute()` returns `false` immediately. The check itself allocates nothing. The benchmark's catch block allocates the `ResilienceException` object — that allocation is the caller's, not the proxy check.
 

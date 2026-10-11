@@ -27,7 +27,7 @@ public interface ICircuitService
     ValueTask<string> GetAsync(string id, CancellationToken ct);
 }
 
-[RateLimit(MaxPerSecond = 1_000_000, BurstSize = 1_000_000)]
+[RateLimit(MaxPerSecond = int.MaxValue, BurstSize = int.MaxValue)]
 public interface IRateLimitService
 {
     ValueTask<string> GetAsync(string id, CancellationToken ct);
@@ -35,7 +35,7 @@ public interface IRateLimitService
 
 [Retry(MaxAttempts = 3, BackoffMs = 1)]
 [Timeout(Ms = 5_000)]
-[RateLimit(MaxPerSecond = 1_000_000, BurstSize = 1_000_000)]
+[RateLimit(MaxPerSecond = int.MaxValue, BurstSize = int.MaxValue)]
 [CircuitBreaker(MaxFailures = 5, ResetMs = 1_000, HalfOpenProbes = 1)]
 public interface IAllPoliciesService
 {
@@ -135,7 +135,7 @@ public class ResilienceBenchmarks
         _inner = new AlwaysSucceedsImpl();
         var retry = new RetryPolicy(3, 1, false, 0);
         var cb = new CircuitBreakerPolicy(5, 1_000, 1);
-        var rl = new RateLimiter(1_000_000, 1_000_000, RateLimitScope.Shared);
+        var rl = new RateLimiter(int.MaxValue, int.MaxValue, RateLimitScope.Shared);
 
         _retryProxy     = new IRetryServiceResilienceProxy(_inner, new RetryServiceResiliencePolicies { Retry = retry });
         _cbProxy        = new ICircuitServiceResilienceProxy(_inner, new CircuitServiceResiliencePolicies { CircuitBreaker = cb });
