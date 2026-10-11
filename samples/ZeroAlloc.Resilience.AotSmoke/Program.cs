@@ -5,9 +5,9 @@ using System.Threading.Tasks;
 using ZeroAlloc.Resilience;
 using ZeroAlloc.Resilience.AotSmoke;
 
-// Exercise the generator-emitted IFlakyServiceResilienceProxy under
-// PublishAot=true. The Retry policy should transparently swallow the first
-// two simulated failures and return the third attempt's success.
+// Exercise the generator-emitted proxies under PublishAot=true: Retry, Result-aware retry,
+// Timeout, RateLimit, CircuitBreaker and the CircuitBreaker fallback. The Retry policy should
+// transparently swallow the first two simulated failures and return the third attempt's success.
 
 var inner = new FlakyImpl { FailTimes = 2 };
 var retry = new RetryPolicy(maxAttempts: 3, backoffMs: 1, jitter: false, perAttemptTimeoutMs: 0);
@@ -57,6 +57,72 @@ if (!afterThrow.IsSuccess || throwing.CallCount != 2)
 
 if (Stopwatch.GetElapsedTime(started) > TimeSpan.FromSeconds(5))
     return Fail("The delay hint was not used: the retries waited for the 10 s backoff");
+
+// Timeout: a fast call passes through; a hung call is cancelled by the total timeout and the
+// cancellation reaches the caller.
+var timeoutImpl = new PolicyImpl();
+var timeoutProxy = new ITimeoutServiceResilienceProxy(timeoutImpl, new TimeoutServiceResiliencePolicies());
+var inTime = await timeoutProxy.GetAsync("t", CancellationToken.None).ConfigureAwait(false);
+if (!string.Equals(inTime, "ok:t", StringComparison.Ordinal))
+    return Fail($"Timeout happy path expected 'ok:t', got '{inTime}'");
+timeoutImpl.Hang = true;
+try
+{
+    _ = await timeoutProxy.GetAsync("h", CancellationToken.None).ConfigureAwait(false);
+    return Fail("Timeout expected the hung call to be cancelled");
+}
+catch (OperationCanceledException) { /* expected: the timeout fired */ }
+
+// RateLimit: the one-token burst admits the first call and rejects the second.
+var rateImpl = new PolicyImpl();
+var rateProxy = new IRateLimitServiceResilienceProxy(rateImpl, new RateLimitServiceResiliencePolicies());
+var admitted = await rateProxy.GetAsync("r", CancellationToken.None).ConfigureAwait(false);
+if (!string.Equals(admitted, "ok:r", StringComparison.Ordinal))
+    return Fail($"RateLimit expected the first call to pass, got '{admitted}'");
+try
+{
+    _ = await rateProxy.GetAsync("r", CancellationToken.None).ConfigureAwait(false);
+    return Fail("RateLimit expected the second call to be rejected");
+}
+catch (ResilienceException ex) when (ex.Policy == ResiliencePolicy.RateLimit) { /* expected */ }
+if (rateImpl.CallCount != 1)
+    return Fail($"RateLimit expected 1 inner call, got {rateImpl.CallCount}");
+
+// CircuitBreaker: one failure opens the circuit, after which calls are rejected without
+// reaching the inner implementation.
+var circuitImpl = new PolicyImpl();
+var circuitProxy = new ICircuitServiceResilienceProxy(circuitImpl, new CircuitServiceResiliencePolicies());
+var closed = await circuitProxy.GetAsync("c", CancellationToken.None).ConfigureAwait(false);
+if (!string.Equals(closed, "ok:c", StringComparison.Ordinal))
+    return Fail($"CircuitBreaker closed expected 'ok:c', got '{closed}'");
+circuitImpl.ShouldFail = true;
+try
+{
+    _ = await circuitProxy.GetAsync("c", CancellationToken.None).ConfigureAwait(false);
+    return Fail("CircuitBreaker expected the inner failure to propagate");
+}
+catch (InvalidOperationException) { /* expected: the failure that opens the circuit */ }
+try
+{
+    _ = await circuitProxy.GetAsync("c", CancellationToken.None).ConfigureAwait(false);
+    return Fail("CircuitBreaker expected the open circuit to reject the call");
+}
+catch (ResilienceException ex) when (ex.Policy == ResiliencePolicy.CircuitBreaker) { /* expected */ }
+if (circuitImpl.CallCount != 2)
+    return Fail($"CircuitBreaker expected 2 inner calls, got {circuitImpl.CallCount}");
+
+// Fallback: once the circuit is open, the proxy calls the fallback method instead of throwing.
+var fallbackImpl = new PolicyImpl { ShouldFail = true };
+var fallbackProxy = new IFallbackServiceResilienceProxy(fallbackImpl, new FallbackServiceResiliencePolicies());
+try
+{
+    _ = await fallbackProxy.GetAsync("f", CancellationToken.None).ConfigureAwait(false);
+    return Fail("Fallback expected the inner failure that opens the circuit to propagate");
+}
+catch (InvalidOperationException) { /* expected: the failure that opens the circuit */ }
+var fellBack = await fallbackProxy.GetAsync("f", CancellationToken.None).ConfigureAwait(false);
+if (!string.Equals(fellBack, "fallback:f", StringComparison.Ordinal) || fallbackImpl.FallbackCount != 1)
+    return Fail($"Fallback expected 'fallback:f' from 1 fallback call, got '{fellBack}' from {fallbackImpl.FallbackCount}");
 
 Console.WriteLine("AOT smoke: PASS");
 return 0;

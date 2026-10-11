@@ -86,7 +86,7 @@ ValueTask<string> LegacyCallAsync(string id, CancellationToken ct);
 
 ## Allocation note
 
-Each call to a timeout-configured method allocates one `CancellationTokenSource` (the linked source). This is unavoidable — `CancellationTokenSource` is a heap object. For non-timeout methods, no allocation occurs on the happy path.
+Each call to a timeout-configured method allocates one `CancellationTokenSource` (the linked source) and the timer its `CancelAfter` starts: 144 B per call on .NET 10. This is unavoidable — `CancellationTokenSource` is a heap object. For non-timeout methods, no allocation occurs on the happy path.
 
 If you need zero allocation even for timeout paths, consider managing the `CancellationTokenSource` externally and passing a pre-cancelled token; or remove `[Timeout]` and rely on the caller to supply a pre-deadlined token.
 
