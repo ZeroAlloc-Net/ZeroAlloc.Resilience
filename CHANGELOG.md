@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.3.2](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v3.3.1...v3.3.2) (2026-10-11)
+
+
+### Tests
+
+* assert happy-path allocations and run every policy proxy under AOT ([#218](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/218)) ([d2c07ea](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/d2c07ea2868f65b04e46875de47d0e2546eaddac)), closes [#217](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/217)
+
 ## [3.3.1](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v3.3.0...v3.3.1) (2026-09-30)
 
 
