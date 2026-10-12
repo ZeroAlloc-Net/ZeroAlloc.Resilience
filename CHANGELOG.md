@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.3.3](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v3.3.2...v3.3.3) (2026-10-12)
+
+
+### Refactoring
+
+* remove NetFabric.Hyperlinq.Analyzer ([#221](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/221)) ([cc9da50](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/cc9da507b1458a01b9e98edc69605ec799f4b9cf))
+
 ## [3.3.2](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v3.3.1...v3.3.2) (2026-10-11)
 
 
