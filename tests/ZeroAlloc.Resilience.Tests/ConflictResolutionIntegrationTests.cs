@@ -5,13 +5,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using ZeroAlloc.Resilience;
 
-[assembly: System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "HLQ006:GetEnumerator returns a reference type",
-    Scope = "member", Target = "~M:ZeroAlloc.Resilience.Tests.ResilientItemsImpl.GetEnumerator~System.Collections.Generic.IEnumerator{System.Int32}",
-    Justification = "IEnumerable<T> dictates the reference-type enumerator this fake implements.")]
-[assembly: System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "HLQ006:GetEnumerator returns a reference type",
-    Scope = "member", Target = "~M:ZeroAlloc.Resilience.Tests.IResilientItemsResilienceProxy.GetEnumerator~System.Collections.Generic.IEnumerator{System.Int32}",
-    Justification = "IEnumerable<T> dictates the reference-type enumerator the generated proxy forwards.")]
-
 namespace ZeroAlloc.Resilience.Tests;
 
 // Conflicting declarations of one name are resolved with explicit interface implementations, so
