@@ -41,21 +41,22 @@ Inject `IExternalService` anywhere — all policies are transparent to the calle
 
 ## Performance
 
-Head-to-head vs **Polly v8** (the de-facto resilience library in .NET). .NET 10.0.7, BenchmarkDotNet v0.14.0.
+Head-to-head vs **Polly v8** (the de-facto resilience library in .NET): Polly.Core 8.8.0, .NET 10.0.13, BenchmarkDotNet 0.15.8, measured 2026-10-15. Timings are indicative — measured on a developer laptop (Core Ultra 7 255H, hybrid P/E cores) under background load; allocations are exact, ratios are same-run.
 
-| Operation | Polly v8 | ZA.Resilience | Speedup |
+| Operation | ZA vs Polly | Polly v8 | ZA.Resilience |
 |---|---:|---:|---:|
-| Retry, happy path | 600 ns / 64 B | **23 ns / 0 B** | **26× faster, 0 B alloc** |
-| CircuitBreaker, closed | 776 ns / 64 B | **17 ns / 0 B** | **45× faster, 0 B alloc** |
-| Retry with 2/3 failures | 22.86 ms / 3,134 B | 27.89 ms / 948 B | 22% slower wall-clock, **3.3× less alloc** |
-| Retry with 2/3 failures, **backoff=0** (isolates loop overhead) | 12.80 µs / 1,984 B | **7.31 µs / 576 B** | **43% faster, 71% less alloc** |
-| All-policies stacked, happy path | 1,283 ns / 104 B | **126 ns / 144 B** | **10× faster** |
+| Retry, happy path | **14.7× faster, 0 B alloc** | 193.33 ns / 64 B | **13.18 ns / 0 B** |
+| CircuitBreaker, closed | **15.0× faster, 0 B alloc** | 217.99 ns / 64 B | **14.50 ns / 0 B** |
+| Retry with 2/3 failures | 2.0% slower wall-clock, **2.6× less alloc** | 7,962,763.44 ns / 3,185 B | 8,124,601.61 ns / 1,225 B |
+| Retry with 2/3 failures, **backoff=0** (isolates loop overhead) | **2.8× faster, 71% less alloc** | 5,868.66 ns / 1,984 B | **2,092.61 ns / 576 B** |
+| All-policies stacked, happy path | **5.9× faster**, 40 B more alloc | 623.68 ns / 104 B | **105.87 ns / 144 B** |
+| All-policies stacked, CB open (fast-reject) | **1.35× faster, 33% less alloc** | 3,403.23 ns / 1,352 B | **2,512.78 ns / 912 B** |
 
 The happy-path gap is driven by Polly's `ResiliencePipeline.ExecuteAsync` walking the strategy chain via delegate dispatch and allocating a `ResilienceContext` per call (64 B). ZA emits one direct method per interface — retry/CB checks are inline `if` statements with no context object or closure.
 
-The 22% gap on the 1 ms-backoff retry row is not ZA's retry loop: at `BackoffMs = 0` ZA is 43% faster than Polly with 71% less allocation. It is `Task.Delay` timer-tick alignment (each `Task.Delay(1ms)` wakes about 16 ms later on Windows) plus the continuation handoff, both framework-bound.
+With a 1 ms backoff both libraries spend almost all of each call in `Task.Delay`, so the retry-with-failures row is at parity; at `BackoffMs = 0` the retry loop itself is measured, and ZA is 2.8× faster with 71% less allocation.
 
-The all-policies happy path allocates 144 B: the linked `CancellationTokenSource` that `[Timeout]` creates and the timer its `CancelAfter` starts. Without `[Timeout]` the proxy allocates 0 B.
+The all-policies happy path allocates 144 B: the linked `CancellationTokenSource` that `[Timeout]` creates and the timer its `CancelAfter` starts. Without `[Timeout]` the proxy allocates 0 B. With the circuit open, the proxy rejects before the timeout and the retry loop, and the 912 B is the one `ResilienceException` it throws.
 
 Full methodology + self-benchmark: [docs/performance.md](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/performance.md).
 
