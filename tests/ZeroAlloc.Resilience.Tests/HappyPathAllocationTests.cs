@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using ZeroAlloc.Resilience;
+using ZeroAlloc.TestHelpers;
 
 namespace ZeroAlloc.Resilience.Tests;
 
@@ -70,7 +71,8 @@ public class HappyPathAllocationTests
     private const int Iterations = 1_000;
 
     // One linked CancellationTokenSource plus the timer CancelAfter registers, measured at 144 B
-    // on .NET 10 x64. This is the per-call cost docs/performance.md documents for [Timeout].
+    // on .NET 10 x64. This is the per-call cost docs/performance.md documents for [Timeout]. The
+    // tests assert it exactly, so a change that shrinks it fails too and the figure gets updated.
     private const long TimeoutBytesPerCall = 144;
 
     private static readonly AllocSucceedsImpl Inner = new();
@@ -79,67 +81,69 @@ public class HappyPathAllocationTests
     public void Retry_FirstAttemptSucceeds_AllocatesNothing()
     {
         var proxy = new IAllocRetryServiceResilienceProxy(Inner, new AllocRetryServiceResiliencePolicies());
-        BytesPerCall(() => proxy.GetAsync("x", CancellationToken.None)).Should().Be(0);
+        AssertAllocatesNothing(() => proxy.GetAsync("x", CancellationToken.None), "[Retry] first attempt succeeds");
     }
 
     [OptimizedBuildFact]
     public void CircuitBreaker_Closed_AllocatesNothing()
     {
         var proxy = new IAllocCircuitServiceResilienceProxy(Inner, new AllocCircuitServiceResiliencePolicies());
-        BytesPerCall(() => proxy.GetAsync("x", CancellationToken.None)).Should().Be(0);
+        AssertAllocatesNothing(() => proxy.GetAsync("x", CancellationToken.None), "[CircuitBreaker] closed");
     }
 
     [OptimizedBuildFact]
     public void CircuitBreakerWithFallback_Closed_AllocatesNothing()
     {
         var proxy = new IAllocCircuitFallbackServiceResilienceProxy(Inner, new AllocCircuitFallbackServiceResiliencePolicies());
-        BytesPerCall(() => proxy.GetAsync("x", CancellationToken.None)).Should().Be(0);
+        AssertAllocatesNothing(() => proxy.GetAsync("x", CancellationToken.None), "[CircuitBreaker] with fallback, closed");
     }
 
     [OptimizedBuildFact]
     public void RateLimit_TokenAvailable_AllocatesNothing()
     {
         var proxy = new IAllocRateLimitServiceResilienceProxy(Inner, new AllocRateLimitServiceResiliencePolicies());
-        BytesPerCall(() => proxy.GetAsync("x", CancellationToken.None)).Should().Be(0);
+        AssertAllocatesNothing(() => proxy.GetAsync("x", CancellationToken.None), "[RateLimit] token available");
     }
 
     [OptimizedBuildFact]
     public void RetryRateLimitAndCircuitBreaker_HappyPath_AllocatesNothing()
     {
         var proxy = new IAllocNoTimeoutPoliciesServiceResilienceProxy(Inner, new AllocNoTimeoutPoliciesServiceResiliencePolicies());
-        BytesPerCall(() => proxy.GetAsync("x", CancellationToken.None)).Should().Be(0);
+        AssertAllocatesNothing(() => proxy.GetAsync("x", CancellationToken.None), "[Retry] [RateLimit] [CircuitBreaker] happy path");
     }
 
     [OptimizedBuildFact]
     public void Timeout_HappyPath_AllocatesOnlyTheCancellationTokenSource()
     {
         var proxy = new IAllocTimeoutServiceResilienceProxy(Inner, new AllocTimeoutServiceResiliencePolicies());
-        BytesPerCall(() => proxy.GetAsync("x", CancellationToken.None)).Should().BeLessThanOrEqualTo(TimeoutBytesPerCall);
+        BytesPerCall(() => proxy.GetAsync("x", CancellationToken.None)).Should().Be(TimeoutBytesPerCall);
     }
 
     [OptimizedBuildFact]
     public void AllPolicies_HappyPath_AllocatesOnlyTheTimeoutCancellationTokenSource()
     {
         var proxy = new IAllocAllPoliciesServiceResilienceProxy(Inner, new AllocAllPoliciesServiceResiliencePolicies());
-        BytesPerCall(() => proxy.GetAsync("x", CancellationToken.None)).Should().BeLessThanOrEqualTo(TimeoutBytesPerCall);
+        BytesPerCall(() => proxy.GetAsync("x", CancellationToken.None)).Should().Be(TimeoutBytesPerCall);
     }
 
-    // Each call must complete synchronously, so the measurement covers the proxy and nothing
-    // the scheduler adds. Warm-up runs first so tiering and first-call initialisation are excluded.
+    // The whole proxy call, measured with AllocationGate: it settles the heap, warms up, and
+    // throws if a call does not complete synchronously, so the measurement covers the proxy and
+    // nothing the scheduler adds. Budget 0 fails on any allocation, because the gate compares the
+    // total and never rounds a small one away.
+    private static void AssertAllocatesNothing(Func<ValueTask<string>> call, string label)
+    {
+        Consume(call());
+        AllocationGate.AssertBudgetValueTask(0, Iterations, call, label);
+    }
+
+    // The exact bytes per call, rounded up.
     private static long BytesPerCall(Func<ValueTask<string>> call)
     {
-        for (var i = 0; i < 100; i++)
-            Consume(call());
-
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < Iterations; i++)
-            Consume(call());
-        var after = GC.GetAllocatedBytesForCurrentThread();
-
-        return (after - before) / Iterations;
+        Consume(call());
+        return AllocationGate.MeasureBytesPerCallValueTask(Iterations, call);
     }
 
-    // Plain checks rather than assertions: an assertion object would allocate inside the measured loop.
+    // Checked once before measuring: the call takes the happy path and returns the inner result.
     private static void Consume(ValueTask<string> pending)
     {
         if (!pending.IsCompletedSuccessfully)
