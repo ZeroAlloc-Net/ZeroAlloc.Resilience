@@ -41,16 +41,16 @@ Inject `IExternalService` anywhere — all policies are transparent to the calle
 
 ## Performance
 
-Head-to-head vs **Polly v8** (the de-facto resilience library in .NET): Polly.Core 8.8.0, .NET 10.0.13, BenchmarkDotNet 0.15.8, measured 2026-10-15. Timings are indicative — measured on a developer laptop (Core Ultra 7 255H, hybrid P/E cores) under background load; allocations are exact, ratios are same-run.
+Head-to-head vs **Polly v8** (the de-facto resilience library in .NET): Polly.Core 8.8.0, .NET 10.0.13, BenchmarkDotNet 0.15.8, measured 2026-10-15. Allocations are exact. Speed is shown as same-run ratios, because the benchmark host is a shared VM; absolute timings are not published. "ZA vs Polly" divides the Polly row's mean by the ZA row's, from the same run.
 
-| Operation | ZA vs Polly | Polly v8 | ZA.Resilience |
+| Operation | ZA vs Polly | Polly alloc | ZA alloc |
 |---|---:|---:|---:|
-| Retry, happy path | **14.7× faster, 0 B alloc** | 193.33 ns / 64 B | **13.18 ns / 0 B** |
-| CircuitBreaker, closed | **15.0× faster, 0 B alloc** | 217.99 ns / 64 B | **14.50 ns / 0 B** |
-| Retry with 2/3 failures | 2.0% slower wall-clock, **2.6× less alloc** | 7,962,763.44 ns / 3,185 B | 8,124,601.61 ns / 1,225 B |
-| Retry with 2/3 failures, **backoff=0** (isolates loop overhead) | **2.8× faster, 71% less alloc** | 5,868.66 ns / 1,984 B | **2,092.61 ns / 576 B** |
-| All-policies stacked, happy path | **5.9× faster**, 40 B more alloc | 623.68 ns / 104 B | **105.87 ns / 144 B** |
-| All-policies stacked, CB open (fast-reject) | **1.35× faster, 33% less alloc** | 3,403.23 ns / 1,352 B | **2,512.78 ns / 912 B** |
+| Retry, happy path | **14.7× faster** | 64 B | **0 B** |
+| CircuitBreaker, closed | **15.0× faster** | 64 B | **0 B** |
+| Retry with 2/3 failures | 2.0% slower wall-clock | 3,185 B | **1,225 B** |
+| Retry with 2/3 failures, **backoff=0** (isolates loop overhead) | **2.8× faster** | 1,984 B | **576 B** |
+| All-policies stacked, happy path | **5.9× faster** | 104 B | 144 B |
+| All-policies stacked, CB open (fast-reject) | **1.35× faster** | 1,352 B | **912 B** |
 
 The happy-path gap is driven by Polly's `ResiliencePipeline.ExecuteAsync` walking the strategy chain via delegate dispatch and allocating a `ResilienceContext` per call (64 B). ZA emits one direct method per interface — retry/CB checks are inline `if` statements with no context object or closure.
 
