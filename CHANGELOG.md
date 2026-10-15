@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.3.4](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v3.3.3...v3.3.4) (2026-10-15)
+
+
+### Documentation
+
+* correct readme policy order and retry benchmark explanation ([#227](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/227)) ([a1d196d](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/a1d196d23420d3931ee31e5ac390e1d1d35c35eb))
+* publish benchmark speed as same-run ratios only ([#231](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/231)) ([573a10c](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/573a10c2ceaa17c48b87b217fe340bf8e4cef38f))
+* re-measure the polly comparison and correct the cb-open narrative ([#230](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/230)) ([84334b8](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/84334b897890e15cffb2a715c14cc01c4bf004ae)), closes [#226](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/226)
+
+
+### Tests
+
+* gate happy-path allocations with AllocationGate ([#229](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/229)) ([daf7df3](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/daf7df31fdd5dde9833a3e434e02c8a19ae4b176)), closes [#225](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/225)
+
 ## [3.3.3](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v3.3.2...v3.3.3) (2026-10-12)
 
 
