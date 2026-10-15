@@ -8,7 +8,7 @@
 
 Source-generated, zero-allocation resilience policies for .NET.
 
-Add `[Retry]`, `[Timeout]`, `[RateLimit]`, and `[CircuitBreaker]` to an interface. A Roslyn source generator emits a proxy class that composes all policies in declaration order with **no heap allocation on the happy path** (beyond the unavoidable `CancellationTokenSource` for timeout). AOT-safe.
+Add `[Retry]`, `[Timeout]`, `[RateLimit]`, and `[CircuitBreaker]` to an interface. A Roslyn source generator emits a proxy class that composes all policies in a [fixed order](#policy-execution-order), whatever order the attributes are written in, with **no heap allocation on the happy path** (beyond the unavoidable `CancellationTokenSource` for timeout). AOT-safe.
 
 ---
 
@@ -19,6 +19,8 @@ dotnet add package ZeroAlloc.Resilience
 ```
 
 ```csharp
+using ZeroAlloc.Resilience;
+
 [Retry(MaxAttempts = 3, BackoffMs = 200, Jitter = true, PerAttemptTimeoutMs = 1_000)]
 [Timeout(Ms = 5_000)]
 [RateLimit(MaxPerSecond = 100, BurstSize = 10)]
@@ -45,11 +47,15 @@ Head-to-head vs **Polly v8** (the de-facto resilience library in .NET). .NET 10.
 |---|---:|---:|---:|
 | Retry, happy path | 600 ns / 64 B | **23 ns / 0 B** | **26× faster, 0 B alloc** |
 | CircuitBreaker, closed | 776 ns / 64 B | **17 ns / 0 B** | **45× faster, 0 B alloc** |
-| Retry with 2/3 failures | 22.9 ms / 3,134 B | 27.9 ms / 948 B | 22% slower wall-clock, **3.3× less alloc** |
+| Retry with 2/3 failures | 22.86 ms / 3,134 B | 27.89 ms / 948 B | 22% slower wall-clock, **3.3× less alloc** |
+| Retry with 2/3 failures, **backoff=0** (isolates loop overhead) | 12.80 µs / 1,984 B | **7.31 µs / 576 B** | **43% faster, 71% less alloc** |
+| All-policies stacked, happy path | 1,283 ns / 104 B | **126 ns / 144 B** | **10× faster** |
 
 The happy-path gap is driven by Polly's `ResiliencePipeline.ExecuteAsync` walking the strategy chain via delegate dispatch and allocating a `ResilienceContext` per call (64 B). ZA emits one direct method per interface — retry/CB checks are inline `if` statements with no context object or closure.
 
-The retry-with-failures wall-clock gap is dominated by `Task.Delay(BackoffMs)`; the residual 22% is ZA's `for`-loop scheduling — measurable, but mostly invisible against I/O latency.
+The 22% gap on the 1 ms-backoff retry row is not ZA's retry loop: at `BackoffMs = 0` ZA is 43% faster than Polly with 71% less allocation. It is `Task.Delay` timer-tick alignment (each `Task.Delay(1ms)` wakes about 16 ms later on Windows) plus the continuation handoff, both framework-bound.
+
+The all-policies happy path allocates 144 B: the linked `CancellationTokenSource` that `[Timeout]` creates and the timer its `CancelAfter` starts. Without `[Timeout]` the proxy allocates 0 B.
 
 Full methodology + self-benchmark: [docs/performance.md](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/performance.md).
 
@@ -212,7 +218,7 @@ Full docs live in [`docs/`](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilienc
 - [Source Generator](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/source-generator.md)
 - [Performance](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/performance.md)
 - Core concepts: [Retry](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/core-concepts/retry.md) · [Timeout](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/core-concepts/timeout.md) · [Rate Limit](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/core-concepts/rate-limit.md) · [Circuit Breaker](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/core-concepts/circuit-breaker.md) · [Execution Order](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/core-concepts/execution-order.md)
-- Guides: [Fallback](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/guides/fallback.md) · [Method-Level Overrides](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/guides/method-level-overrides.md) · [Result Return Types](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/guides/result-return-types.md) · [DI Registration](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/guides/di-registration.md) · [Migrating to 2.0](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/guides/migrating-to-v2.md)
+- Guides: [Fallback](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/guides/fallback.md) · [Method-Level Overrides](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/guides/method-level-overrides.md) · [Result Return Types](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/guides/result-return-types.md) · [DI Registration](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/guides/di-registration.md) · [Migrating to 2.0](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/guides/migrating-to-v2.md) · [Migrating to 3.0](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/guides/migrating-to-v3.md)
 
 ---
 
