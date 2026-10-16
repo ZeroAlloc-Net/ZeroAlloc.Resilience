@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.3.5](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v3.3.4...v3.3.5) (2026-10-16)
+
+
+### Documentation
+
+* rewrite the readme as a product page ([#235](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/235)) ([73688dc](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/73688dcd50c3ddb78f16a4cff57ecaf16a9c9eb9))
+
 ## [3.3.4](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v3.3.3...v3.3.4) (2026-10-15)
 
 
