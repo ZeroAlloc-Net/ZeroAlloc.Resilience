@@ -43,3 +43,14 @@ This registers `ExternalServiceImpl`, all policy objects, and binds `IExternalSe
 ## Failure surface
 
 If a method returns `ValueTask` or `Task` of `Result`, `Result<T>` or `Result<T, ResilienceError>`, policy failures are returned as a failure of that type, with no exception thrown. A `Result<T, E>` with any other `E` gets the inner call's own Result back; see [Result Return Types](guides/result-return-types.md). Otherwise `ResilienceException` is thrown with a `Policy` property identifying the cause.
+
+```csharp
+try
+{
+    var result = await service.FetchAsync("id", ct);
+}
+catch (ResilienceException ex) when (ex.Policy == ResiliencePolicy.CircuitBreaker)
+{
+    // circuit was open and no fallback was configured
+}
+```

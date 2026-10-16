@@ -8,7 +8,7 @@ sidebar_position: 1
 
 Source-generated, zero-allocation resilience policies for .NET.
 
-Add `[Retry]`, `[Timeout]`, `[RateLimit]`, and `[CircuitBreaker]` to an interface; the generator emits a proxy composing all policies in declaration order with no heap allocation on the happy path.
+Add `[Retry]`, `[Timeout]`, `[RateLimit]`, and `[CircuitBreaker]` to an interface; the generator emits a proxy composing all policies in a [fixed order](core-concepts/execution-order.md), whatever order the attributes are written in, with no heap allocation on the happy path.
 
 ## Quick example
 
