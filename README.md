@@ -12,7 +12,7 @@ Retry, timeout, rate limiting and circuit breaking for .NET, declared as attribu
 ## Why ZeroAlloc.Resilience
 
 - **0 B per successful call** through `[Retry]` and `[CircuitBreaker]`, asserted by tests on every run. Polly v8 allocates a 64 B `ResilienceContext` per call.
-- **14.7× and 15.0× faster than Polly v8** on the retry and circuit-breaker happy paths, and 5.9× faster with all four policies stacked, measured in the same run.
+- **20× and 23× faster than Polly v8** on the retry and circuit-breaker happy paths, and 7.7× faster with all four policies stacked, measured in the same run.
 - **Works under NativeAOT and trimming.** The proxy is plain generated code with no reflection, published as a NativeAOT app in CI.
 - **Mistakes surface at compile time.** A misspelled fallback, an invalid attribute value or a timeout on a method without a `CancellationToken` is a compiler diagnostic.
 
@@ -71,13 +71,13 @@ The first two calls throw, the proxy retries, and the caller only sees the resul
 
 ## Performance
 
-Against Polly.Core 8.8.0 on .NET 10.0.13, measured 2026-10-15. Allocations are exact; speed is a same-run ratio, because the benchmark host is a shared VM.
+Against Polly.Core 8.8.0 on .NET 10.0.13, measured 2026-10-21. Allocations are exact; speed is a same-run ratio.
 
 | Operation | ZA vs Polly | Polly alloc | ZA alloc |
 |---|---:|---:|---:|
-| Retry, happy path | **14.7× faster** | 64 B | **0 B** |
-| CircuitBreaker, closed | **15.0× faster** | 64 B | **0 B** |
-| All-policies stacked, happy path | **5.9× faster** | 104 B | 144 B |
+| Retry, happy path | **20.0× faster** | 64 B | **0 B** |
+| CircuitBreaker, closed | **23.3× faster** | 64 B | **0 B** |
+| All-policies stacked, happy path | **7.7× faster** | 104 B | 144 B |
 
 With all policies stacked, the 144 B is the linked `CancellationTokenSource` and timer that `[Timeout]` needs; without `[Timeout]` the proxy allocates nothing. Polly walks a delegate chain per call; ZA emits one method with the policy checks inline. Failure paths, an open circuit and the full method: [docs/performance.md](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/performance.md).
 
