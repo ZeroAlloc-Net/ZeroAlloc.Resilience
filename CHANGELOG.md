@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.3.6](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v3.3.5...v3.3.6) (2026-10-21)
+
+
+### Documentation
+
+* re-run the benchmarks pinned, with three launches ([#249](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/249)) ([c1d9824](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/c1d9824ee00f6ba3049bc2316a0f46d2f9a6652d))
+
 ## [3.3.5](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v3.3.4...v3.3.5) (2026-10-16)
 
 
