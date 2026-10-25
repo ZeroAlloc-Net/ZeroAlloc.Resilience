@@ -47,13 +47,21 @@ internal sealed class IApiResilienceProxy : global::T.IApi
             }
             catch (global::System.OperationCanceledException) when (__ct.IsCancellationRequested)
             {
-                if (__candidate is not null) await __candidate.DisposeAsync().ConfigureAwait(false);
+                if (__candidate is not null)
+                {
+                    try { await __candidate.DisposeAsync().ConfigureAwait(false); }
+                    catch (global::System.Exception) { /* the attempt's own exception wins */ }
+                }
                 throw;
             }
             catch (global::System.Exception __ex)
             {
                 __lastEx = __ex;
-                if (__candidate is not null) await __candidate.DisposeAsync().ConfigureAwait(false);
+                if (__candidate is not null)
+                {
+                    try { await __candidate.DisposeAsync().ConfigureAwait(false); }
+                    catch (global::System.Exception) { /* the attempt's own exception wins */ }
+                }
                 if (!global::T.IApi.IsTransient(__ex)) break;
                 var __hint = global::T.IApi.RetryAfter(__ex);
                 if (__attempt == _retry.MaxAttempts - 1) break;
@@ -99,13 +107,21 @@ internal sealed class IApiResilienceProxy : global::T.IApi
             }
             catch (global::System.OperationCanceledException) when (__ct.IsCancellationRequested)
             {
-                if (__candidate is not null) await __candidate.DisposeAsync().ConfigureAwait(false);
+                if (__candidate is not null)
+                {
+                    try { await __candidate.DisposeAsync().ConfigureAwait(false); }
+                    catch (global::System.Exception) { /* the attempt's own exception wins */ }
+                }
                 throw;
             }
             catch (global::System.Exception __ex)
             {
                 __lastEx = __ex;
-                if (__candidate is not null) await __candidate.DisposeAsync().ConfigureAwait(false);
+                if (__candidate is not null)
+                {
+                    try { await __candidate.DisposeAsync().ConfigureAwait(false); }
+                    catch (global::System.Exception) { /* the attempt's own exception wins */ }
+                }
                 if (!global::T.IApi.IsTransient(__ex)) break;
                 var __hint = global::T.IApi.RetryAfter(__ex);
                 if (__attempt == _retry.MaxAttempts - 1) break;

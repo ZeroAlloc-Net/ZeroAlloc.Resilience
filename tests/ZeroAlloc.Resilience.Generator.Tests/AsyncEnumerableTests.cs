@@ -188,6 +188,92 @@ public class AsyncEnumerableTests
         ShouldCompileWithoutErrors(source);
     }
 
+    // ── A refused [CircuitBreaker] takes its Fallback with it ──────────────────
+
+    [Fact]
+    public void An_interface_level_CircuitBreaker_with_Fallback_reports_ZR0015_only()
+    {
+        var source = Usings + """
+            [Retry(MaxAttempts = 2)]
+            [CircuitBreaker(MaxFailures = 3, Fallback = nameof(GetFallback))]
+            public interface IApi
+            {
+                ValueTask<int> GetAsync(CancellationToken ct);
+                ValueTask<int> GetFallback(CancellationToken ct);
+                IAsyncEnumerable<int> StreamAsync(CancellationToken ct);
+            }
+            """;
+
+        var diagnostics = TestHelper.GeneratorDiagnostics(source);
+
+        // Red: skip the stream rules in ParseMethod.
+        diagnostics.Should().ContainSingle(static d => d.Id == "ZR0015");
+        // Red: run ResolveFallback for streams, so the refused breaker's Fallback is looked up
+        // against StreamAsync and reports ZR0001.
+        diagnostics.Should().NotContain(static d => d.Id == "ZR0001");
+        ShouldCompileWithoutErrors(source);
+    }
+
+    [Fact]
+    public void A_method_level_CircuitBreaker_with_Fallback_reports_ZR0014_only()
+    {
+        var source = Usings + """
+            public interface IApi
+            {
+                [Retry(MaxAttempts = 2)]
+                [CircuitBreaker(MaxFailures = 3, Fallback = nameof(StreamFallback))]
+                IAsyncEnumerable<int> StreamAsync(CancellationToken ct);
+                ValueTask<int> StreamFallback(CancellationToken ct);
+            }
+            """;
+
+        var diagnostics = TestHelper.GeneratorDiagnostics(source);
+
+        // Red: skip the stream rules in ParseMethod.
+        diagnostics.Should().ContainSingle(static d => d.Id == "ZR0014");
+        // Red: run ResolveFallback for streams.
+        diagnostics.Should().NotContain(static d => d.Id == "ZR0001");
+    }
+
+    // ── ZR0015 for an inherited declaration's own attribute ────────────────────
+
+    [Fact]
+    public void An_inherited_stream_methods_own_Timeout_reports_ZR0015_here_and_ZR0014_on_the_base()
+    {
+        var source = Usings + """
+            public interface IBase
+            {
+                [Retry(MaxAttempts = 2)]
+                [Timeout(Ms = 1000)]
+                IAsyncEnumerable<int> StreamAsync(CancellationToken ct);
+            }
+            [Retry(MaxAttempts = 3)]
+            public interface IApi : IBase
+            {
+                ValueTask<int> GetAsync(CancellationToken ct);
+            }
+            """;
+
+        // The base interface reports its own declaration, as ZR0015.md says.
+        // Red: report ZR0015 in place of ZR0014 for an own method's attribute.
+        var zr0014 = WithId(source, "ZR0014").Should().ContainSingle().Subject;
+        // Red: report ZR0014 at the method's location in place of the attribute's.
+        SourceAt(source, zr0014).Should().StartWith("Timeout(");
+
+        var zr0015 = WithId(source, "ZR0015").Should().ContainSingle().Subject;
+        // Red: report ZR0015 with the effective severity Error.
+        zr0015.Severity.Should().Be(DiagnosticSeverity.Warning);
+        // Red: give an inherited declaration's own attribute the interface-level source and
+        // advice, "from 'IApi'" and "Move [Timeout] from 'IApi' onto the methods that need it".
+        zr0015.GetMessage(CultureInfo.InvariantCulture).Should().Be(
+            "[Timeout] from 'IBase.StreamAsync' is not applied to 'StreamAsync', because it returns IAsyncEnumerable<T>: " +
+            "a stream method takes [Retry] alone, without PerAttemptTimeoutMs, and is retried only until its first item. " +
+            "Remove [Timeout] from 'IBase.StreamAsync'.");
+        // At the derived interface, since the declaration belongs to the base.
+        // Red: report at the attribute's location, as for an own method.
+        SourceAt(source, zr0015).Should().Be("IApi");
+    }
+
     // ── ZR0010: RetryWhen has no Result to read ────────────────────────────────
 
     [Fact]

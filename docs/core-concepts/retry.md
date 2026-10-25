@@ -269,7 +269,7 @@ public interface IMessagesApi
 - **An empty stream** ends after the first `MoveNextAsync` returns `false`, without a retry.
 - **Exhaustion** is that of a `Task` method: `ResilienceException` with the last exception as `InnerException`, or, with `RethrowDeclined`, the declined exception itself.
 - **Cancellation.** The method's `CancellationToken` and the token `GetAsyncEnumerator` receives, through `WithCancellation`, both cancel: the proxy links them, and passes the result to the inner call and to its `GetAsyncEnumerator`. A method without a `CancellationToken` parameter is still cancelled through `WithCancellation`. A cancelled caller gets `OperationCanceledException`, during the backoff too.
-- **Disposal.** The enumerator of every failed attempt is disposed before the next attempt, and the enumerator of the attempt that succeeded when the consumer stops, whether it reads to the end, breaks out early or gets an exception.
+- **Disposal.** The enumerator of every failed attempt is disposed before the next attempt, and the enumerator of the attempt that succeeded when the consumer stops, whether it reads to the end, breaks out early or gets an exception. Disposing a failed attempt's enumerator is best-effort: if its `DisposeAsync` throws, that exception is discarded, so the attempt's own exception still decides the retry and is the one the caller sees.
 
 A stream method takes `[Retry]` alone. `[Timeout]` and a per-attempt timeout would have to cancel the stream while the consumer reads it, `[CircuitBreaker]` cannot tell whether a stream succeeded until the consumer has read it to the end, and `[RateLimit]` would reject a stream only once the consumer starts reading it. So these are refused:
 

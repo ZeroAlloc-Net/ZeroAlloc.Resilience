@@ -214,7 +214,7 @@ internal static class ResilienceWriter
         sb.AppendLine("            }");
         sb.AppendLine("            catch (global::System.OperationCanceledException) when (__ct.IsCancellationRequested)");
         sb.AppendLine("            {");
-        sb.AppendLine("                if (__candidate is not null) await __candidate.DisposeAsync().ConfigureAwait(false);");
+        WriteDisposeFailedCandidate(sb);
         sb.AppendLine("                throw;");
         sb.AppendLine("            }");
         WriteStreamRetryCatch(sb, method, retry);
@@ -234,7 +234,7 @@ internal static class ResilienceWriter
         sb.AppendLine("            catch (global::System.Exception __ex)");
         sb.AppendLine("            {");
         sb.AppendLine("                __lastEx = __ex;");
-        sb.AppendLine("                if (__candidate is not null) await __candidate.DisposeAsync().ConfigureAwait(false);");
+        WriteDisposeFailedCandidate(sb);
         WriteRetryOnExceptionCheck(sb, method);
         var delay = $"{retry}.GetBackoffMs(__attempt)";
         if (method.ExceptionDelayHintMethod is not null)
@@ -245,6 +245,18 @@ internal static class ResilienceWriter
         sb.AppendLine($"                if (__attempt == {retry}.MaxAttempts - 1) break;");
         sb.AppendLine($"                await global::System.Threading.Tasks.Task.Delay({delay}, __ct).ConfigureAwait(false);");
         sb.AppendLine("            }");
+    }
+
+    // The enumerator of a failed attempt is disposed best-effort: the attempt's own exception is
+    // what the retry decides on and what reaches the caller, so an exception from DisposeAsync of
+    // an enumerator that already failed is discarded instead of replacing it.
+    private static void WriteDisposeFailedCandidate(StringBuilder sb)
+    {
+        sb.AppendLine("                if (__candidate is not null)");
+        sb.AppendLine("                {");
+        sb.AppendLine("                    try { await __candidate.DisposeAsync().ConfigureAwait(false); }");
+        sb.AppendLine("                    catch (global::System.Exception) { /* the attempt's own exception wins */ }");
+        sb.AppendLine("                }");
     }
 
     // The items of the attempt that reached its first one, with no catch around them; the

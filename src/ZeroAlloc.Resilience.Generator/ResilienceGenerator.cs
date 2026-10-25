@@ -337,6 +337,10 @@ public sealed partial class ResilienceGenerator : IIncrementalGenerator
     // public instance method the interface declares or inherits.
     private static void ResolveFallback(InterfaceParse state, MethodParse method)
     {
+        // No circuit breaker applies, so no fallback either: a stream method's, refused by
+        // ApplyStreamRules with ZR0014 or ZR0015, is never looked up and never ZR0001.
+        if (method.CircuitBreaker is null) return;
+
         var cbAttr = method.OwnCbAttr ?? state.CircuitBreakerAttr;
         if (cbAttr is null) return;
 

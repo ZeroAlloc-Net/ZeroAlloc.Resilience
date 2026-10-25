@@ -41,9 +41,45 @@ public interface ISlowStreamApi
     IAsyncEnumerable<int> StreamWithoutTokenAsync(string id);
 }
 
+// Two base interfaces declare the same stream method, so the proxy implements one public member
+// and one explicit implementation, which share one retry iterator that takes the declaration to
+// call.
+public interface IFirstStream
+{
+    IAsyncEnumerable<int> StreamAsync(CancellationToken ct);
+}
+
+public interface ISecondStream
+{
+    IAsyncEnumerable<int> StreamAsync(CancellationToken ct);
+}
+
+[Retry(MaxAttempts = 2, BackoffMs = 1)]
+public interface ICollapsedStreamApi : IFirstStream, ISecondStream;
+
+// Each declaration fails its first stream before the first item, then yields its own number.
+public sealed class CollapsedStreamApi : ICollapsedStreamApi
+{
+    public int FirstCalls { get; private set; }
+
+    public int SecondCalls { get; private set; }
+
+    IAsyncEnumerable<int> IFirstStream.StreamAsync(CancellationToken ct) => Stream(1, ++FirstCalls);
+
+    IAsyncEnumerable<int> ISecondStream.StreamAsync(CancellationToken ct) => Stream(2, ++SecondCalls);
+
+    private static async IAsyncEnumerable<int> Stream(int declaration, int call)
+    {
+        await Task.Yield();
+        if (call == 1)
+            throw new HttpRequestException($"declaration {declaration} fails first");
+        yield return declaration;
+    }
+}
+
 // What one call of the inner method does: throw from the call itself, or return a stream that
 // yields Items and then throws Error, or ends.
-public sealed record StreamAttempt(int[] Items, Exception? Error = null, bool ThrowOnCall = false)
+public sealed record StreamAttempt(int[] Items, Exception? Error = null, bool ThrowOnCall = false, bool ThrowOnDispose = false)
 {
     public static StreamAttempt Failing(Exception error) => new(Array.Empty<int>(), error);
 }
@@ -74,6 +110,8 @@ public sealed class ScriptedEnumerator(StreamAttempt attempt, Action onFailure) 
     public ValueTask DisposeAsync()
     {
         Disposed = true;
+        if (attempt.ThrowOnDispose)
+            throw new InvalidOperationException("dispose failed");
         return ValueTask.CompletedTask;
     }
 }
@@ -284,10 +322,10 @@ public class AsyncEnumerableIntegrationTests
         // Red: drop the yield of the first item.
         items.Should().Equal(1);
         inner.CallStarted.Should().HaveCount(2);
-        // BackoffMs is 1, so only the hint makes the wait 50 ms.
-        // Red: wait `_retry.GetBackoffMs(__attempt)`, ignoring the hint.
+        // BackoffMs is 1, so only the hint makes the wait 50 ms; 45 leaves room for timer
+        // granularity. Red: wait `_retry.GetBackoffMs(__attempt)`, ignoring the hint: about 3 ms.
         Stopwatch.GetElapsedTime(inner.Failed[0], inner.CallStarted[1])
-            .Should().BeGreaterThanOrEqualTo(TimeSpan.FromMilliseconds(50));
+            .Should().BeGreaterThanOrEqualTo(TimeSpan.FromMilliseconds(45));
     }
 
     // Two failures, so a proxy that called the inner method twice per attempt still fails, and
@@ -402,6 +440,61 @@ public class AsyncEnumerableIntegrationTests
         // Red: drop the yield of the first item.
         items.Should().Equal(4);
         inner.Calls.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task A_failing_DisposeAsync_of_a_failed_attempt_does_not_replace_its_exception()
+    {
+        var inner = new ScriptedStreamApi(
+            new StreamAttempt(Array.Empty<int>(), new HttpRequestException("1"), ThrowOnDispose: true),
+            Yields(1));
+
+        var items = await Collect(Proxy(inner).StreamAsync("a", CancellationToken.None));
+
+        // The attempt's HttpRequestException is what the retry decides on, so it is retried.
+        // Red: dispose the failed candidate with a plain await, whose InvalidOperationException
+        // then replaces the attempt's exception and reaches the consumer.
+        items.Should().Equal(1);
+        inner.Calls.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task A_failing_DisposeAsync_does_not_replace_the_callers_cancellation()
+    {
+        using var cts = new CancellationTokenSource();
+        var inner = new ScriptedStreamApi(
+            new StreamAttempt(Array.Empty<int>(), new OperationCanceledException("cancelled"), ThrowOnDispose: true),
+            new StreamAttempt(Array.Empty<int>(), new OperationCanceledException("cancelled"), ThrowOnDispose: true),
+            Yields(1))
+        {
+            CancelOnFirstFailure = cts,
+        };
+
+        var act = () => Collect(Proxy(inner).StreamAsync("a", cts.Token));
+
+        // Red: dispose the candidate with a plain await in the caller-cancellation catch: the
+        // InvalidOperationException then reaches the consumer.
+        await act.Should().ThrowExactlyAsync<OperationCanceledException>();
+        inner.Calls.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Each_collapsed_declaration_is_retried_through_its_own_interface()
+    {
+        var inner = new CollapsedStreamApi();
+        var proxy = new ICollapsedStreamApiResilienceProxy(inner, new CollapsedStreamApiResiliencePolicies());
+
+        var first = await Collect(((IFirstStream)proxy).StreamAsync(CancellationToken.None));
+        var second = await Collect(((ISecondStream)proxy).StreamAsync(CancellationToken.None));
+
+        first.Should().Equal(1);
+        // Red: pass declaration 0 from every explicit implementation, so the ISecondStream call
+        // reaches the public declaration, IFirstStream.
+        second.Should().Equal(2);
+        // Each declaration failed once and was retried through its own interface. Red: as the
+        // other Calls assertions, call the inner method once more after the attempt loop.
+        inner.FirstCalls.Should().Be(2);
+        inner.SecondCalls.Should().Be(2);
     }
 
     [Fact]
