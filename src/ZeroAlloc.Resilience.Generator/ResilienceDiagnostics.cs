@@ -148,4 +148,30 @@ internal static class ResilienceDiagnostics
         category: Category,
         defaultSeverity: DiagnosticSeverity.Warning,
         isEnabledByDefault: true);
+
+    /// <summary>
+    /// ZR0014 — A method returning IAsyncEnumerable&lt;T&gt; has its own [Timeout],
+    /// [CircuitBreaker], [RateLimit] or [Retry] with PerAttemptTimeoutMs, which a stream method
+    /// cannot apply: it takes [Retry] alone and is retried only until its first item (Error).
+    /// </summary>
+    public static readonly DiagnosticDescriptor StreamPolicyNotSupported = new(
+        id: "ZR0014",
+        title: "Policy not supported on a stream method",
+        messageFormat: "{0} cannot apply to '{1}', because it returns IAsyncEnumerable<T>: {2}. Remove {0} from '{1}'.",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    /// <summary>
+    /// ZR0015 — A policy a stream method cannot apply comes from the interface, or from the
+    /// attribute of an inherited method, so it is left off that stream method and kept on the
+    /// others (Warning).
+    /// </summary>
+    public static readonly DiagnosticDescriptor StreamPolicyNotApplied = new(
+        id: "ZR0015",
+        title: "Policy not applied to a stream method",
+        messageFormat: "{0} from '{1}' is not applied to '{2}', because it returns IAsyncEnumerable<T>: {3}. {4}.",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true);
 }

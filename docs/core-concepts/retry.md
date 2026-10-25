@@ -249,6 +249,39 @@ In 3.1.0 and earlier, without `[Timeout]`, a cancelled caller waited out every b
 
 ---
 
+## Streams
+
+A method that returns `IAsyncEnumerable<T>` is retried until its first item:
+
+```csharp
+[Retry(MaxAttempts = 3, BackoffMs = 500, RetryOnException = nameof(IsTransient), DelayHint = nameof(RetryAfter))]
+public interface IMessagesApi
+{
+    IAsyncEnumerable<MessageEvent> StreamAsync(MessageRequest request, CancellationToken ct = default);
+
+    static bool IsTransient(Exception exception) => exception is HttpRequestException;
+    static TimeSpan? RetryAfter(Exception exception) => null;
+}
+```
+
+- **Before the first item.** Each attempt calls the inner method and awaits the first `MoveNextAsync` of its enumerator. An exception from either is a failed attempt: the attempt's enumerator is disposed, and the stream is retried after the backoff or the delay hint, as for a `Task` method. `RetryOnException`, `DelayHint`, `MaxDelayMs` and `[RetryAttempt]` work the same way.
+- **After the first item.** Once the first item has reached the consumer, nothing is retried: a retry would replay items the consumer already has. A later exception reaches the consumer unchanged, the same instance.
+- **An empty stream** ends after the first `MoveNextAsync` returns `false`, without a retry.
+- **Exhaustion** is that of a `Task` method: `ResilienceException` with the last exception as `InnerException`, or, with `RethrowDeclined`, the declined exception itself.
+- **Cancellation.** The method's `CancellationToken` and the token `GetAsyncEnumerator` receives, through `WithCancellation`, both cancel: the proxy links them, and passes the result to the inner call and to its `GetAsyncEnumerator`. A method without a `CancellationToken` parameter is still cancelled through `WithCancellation`. A cancelled caller gets `OperationCanceledException`, during the backoff too.
+- **Disposal.** The enumerator of every failed attempt is disposed before the next attempt, and the enumerator of the attempt that succeeded when the consumer stops, whether it reads to the end, breaks out early or gets an exception. Disposing a failed attempt's enumerator is best-effort: if its `DisposeAsync` throws, that exception is discarded, so the attempt's own exception still decides the retry and is the one the caller sees.
+
+A stream method takes `[Retry]` alone. `[Timeout]` and a per-attempt timeout would have to cancel the stream while the consumer reads it, `[CircuitBreaker]` cannot tell whether a stream succeeded until the consumer has read it to the end, and `[RateLimit]` would reject a stream only once the consumer starts reading it. So these are refused:
+
+| Where the policy comes from | Result |
+|---|---|
+| `[Timeout]`, `[CircuitBreaker]`, `[RateLimit]` or `[Retry(PerAttemptTimeoutMs = ...)]` with a value above 0 on the stream method | [ZR0014](../diagnostics/ZR0014.md), an Error |
+| The same on the interface, or on an inherited method's declaration | [ZR0015](../diagnostics/ZR0015.md), a Warning. The policy is left off the stream method and still applies to the interface's other methods |
+
+`RetryWhen` has no failed Result to read, since a stream is not a `Result`: [ZR0010](../diagnostics/ZR0010.md). The proxy never reads `RetryPolicy.PerAttemptTimeoutMs` for a stream, so a `RetryPolicy` built at runtime with a per-attempt timeout drives the stream's retries without one.
+
+---
+
 ## Sync methods
 
 For synchronous methods the retry loop has the same structure without `await`. The wait blocks on the delay token's `WaitHandle`, the total-timeout token under `[Timeout]` or else the caller's, so cancellation interrupts it. `Thread.Sleep` is used only when there is no token that can be cancelled.

@@ -297,4 +297,25 @@ public class SnapshotTests
             """;
         TestHelper.Verify<ResilienceGenerator>(source);
     }
+
+    [Fact]
+    public void Retry_AsyncEnumerable_GeneratesProxy()
+    {
+        var source = """
+            using System;
+            using System.Collections.Generic;
+            using System.Threading;
+            using ZeroAlloc.Resilience;
+            namespace T;
+            [Retry(MaxAttempts = 3, BackoffMs = 500, Jitter = true, MaxDelayMs = 60000, RetryOnException = nameof(IsTransient), DelayHint = nameof(RetryAfter))]
+            public interface IApi
+            {
+                IAsyncEnumerable<string> StreamAsync(string id, CancellationToken ct = default);
+                IAsyncEnumerable<int> CountAsync(int to);
+                static bool IsTransient(Exception exception) => exception is not ArgumentException;
+                static TimeSpan? RetryAfter(Exception exception) => null;
+            }
+            """;
+        TestHelper.Verify<ResilienceGenerator>(source);
+    }
 }

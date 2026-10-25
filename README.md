@@ -67,7 +67,7 @@ The first two calls throw, the proxy retries, and the caller only sees the resul
 - **Result-aware retry**: retry only the failures you call transient, and honour `Retry-After` hints.
 - **Per-method overrides** of the interface-level policies, for example one attempt for a non-idempotent POST.
 - **One-line DI registration** through a generated `Add{Service}Resilience<TImpl>()` extension.
-- **Compile-time diagnostics** ZR0001–ZR0013: [the full list](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/index.md#diagnostics). Every attribute property: [attribute reference](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/attributes.md).
+- **Compile-time diagnostics** ZR0001–ZR0015: [the full list](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/index.md#diagnostics). Every attribute property: [attribute reference](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/attributes.md).
 
 ## Performance
 

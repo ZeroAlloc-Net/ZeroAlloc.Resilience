@@ -74,3 +74,5 @@ services.AddExternalServiceResilience<ExternalServiceImpl>();
 | [ZR0011](diagnostics/ZR0011.md) | Warning | `[RetryAttempt]` has no effect without `[Retry]` |
 | [ZR0012](diagnostics/ZR0012.md) | Error | `[RetryAttempt]` parameter type not supported |
 | [ZR0013](diagnostics/ZR0013.md) | Warning | RethrowDeclined has no effect |
+| [ZR0014](diagnostics/ZR0014.md) | Error | Policy not supported on a stream method |
+| [ZR0015](diagnostics/ZR0015.md) | Warning | Policy not applied to a stream method |

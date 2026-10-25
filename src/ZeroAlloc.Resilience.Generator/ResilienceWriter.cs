@@ -96,6 +96,12 @@ internal static class ResilienceWriter
 
     private static void WriteMethod(StringBuilder sb, MethodModel method)
     {
+        if (method.IsAsyncEnumerable)
+        {
+            WriteStreamMethod(sb, method);
+            return;
+        }
+
         var asyncKw = method.IsAsync ? "async " : "";
         if (method.ExplicitImplementations.Length == 0)
         {
@@ -126,7 +132,14 @@ internal static class ResilienceWriter
         sb.AppendLine($"    private {asyncKw}{method.ReturnTypeFqn} __{method.HelperName}_Resilient{method.TypeParameterList}(int __declaration{parameters}){method.ConstraintClauses}");
         WriteMethodBody(sb, method);
 
-        // The inner call for one declaration, through that declaration's own interface.
+        WriteInnerDispatch(sb, method, declarations);
+    }
+
+    // The inner call for one declaration of a collapsed member, through that declaration's own
+    // interface.
+    private static void WriteInnerDispatch(StringBuilder sb, MethodModel method, string[] declarations)
+    {
+        var parameters = method.ParameterList.Length == 0 ? "" : ", " + method.ParameterList;
         sb.AppendLine($"    private {method.ReturnTypeFqn} __{method.HelperName}_Inner{method.TypeParameterList}(int __declaration{parameters}){method.ConstraintClauses}");
         sb.AppendLine("    {");
         sb.AppendLine("        switch (__declaration)");
@@ -141,6 +154,130 @@ internal static class ResilienceWriter
         sb.AppendLine("        }");
         sb.AppendLine("    }");
         sb.AppendLine();
+    }
+
+    // IAsyncEnumerable<T> with [Retry]: the member, and each other declaration of a collapsed
+    // one, returns a private async iterator. C# allows no yield inside a try with a catch, so
+    // the iterator drives the inner enumerator by hand: each attempt calls the inner method and
+    // awaits its first MoveNextAsync inside the try, and a failure there disposes that
+    // enumerator, waits and starts over. Once the first MoveNextAsync has returned, the loop
+    // ends and the items are yielded with no catch around them, so a later failure reaches the
+    // consumer unchanged. The iterator's __ct is the method's token, marked
+    // [EnumeratorCancellation], so the compiler links it with the token GetAsyncEnumerator gets;
+    // for a method without a token it is an appended parameter, passed default.
+    private static void WriteStreamMethod(StringBuilder sb, MethodModel method)
+    {
+        var core = $"__{method.HelperName}_Resilient{method.TypeParameterList}";
+        var args = method.ArgumentList.Length == 0 ? "default"
+            : method.HasCancellationToken ? method.ArgumentList
+            : method.ArgumentList + ", default";
+        var declarations = ExplicitDeclarations(method.ExplicitImplementations);
+        var collapsed = declarations.Length > 0;
+
+        sb.AppendLine(MethodHeader(method.ExplicitInterface, method.HidesObjectMember, "", method.ReturnTypeFqn, method.Name,
+            method.TypeParameterList, method.ParameterList, method.ConstraintClauses, method.ExplicitConstraintClauses));
+        sb.AppendLine(collapsed ? $"        => {core}(0, {args});" : $"        => {core}({args});");
+        sb.AppendLine();
+        for (var i = 0; i < declarations.Length; i++)
+        {
+            sb.AppendLine($"    {method.ReturnTypeFqn} {declarations[i]}.{method.Name}{method.TypeParameterList}({method.ParameterList}){method.ExplicitConstraintClauses}");
+            sb.AppendLine($"        => {core}({(i + 1).ToString(CultureInfo.InvariantCulture)}, {args});");
+            sb.AppendLine();
+        }
+
+        var parameters = collapsed ? "int __declaration, " + method.StreamParameterList : method.StreamParameterList;
+        sb.AppendLine($"    private async {method.ReturnTypeFqn} {core}({parameters}){method.ConstraintClauses}");
+        WriteStreamBody(sb, method);
+
+        if (collapsed)
+            WriteInnerDispatch(sb, method, declarations);
+    }
+
+    private static void WriteStreamBody(StringBuilder sb, MethodModel method)
+    {
+        var retry = method.RetrySlot!.FieldName;
+        var enumerator = $"global::System.Collections.Generic.IAsyncEnumerator<{method.StreamElementTypeFqn}>";
+
+        sb.AppendLine("    {");
+        sb.AppendLine($"        {enumerator}? __enumerator = null;");
+        sb.AppendLine("        bool __hasItem = false;");
+        sb.AppendLine("        global::System.Exception? __lastEx = null;");
+        sb.AppendLine($"        for (int __attempt = 0; __attempt < {retry}.MaxAttempts; __attempt++)");
+        sb.AppendLine("        {");
+        sb.AppendLine($"            {enumerator}? __candidate = null;");
+        sb.AppendLine("            try");
+        sb.AppendLine("            {");
+        sb.AppendLine($"                __candidate = {InnerCall(method, RetryCallArguments(method))}.GetAsyncEnumerator(__ct);");
+        sb.AppendLine("                __hasItem = await __candidate.MoveNextAsync().ConfigureAwait(false);");
+        sb.AppendLine("                __enumerator = __candidate;");
+        sb.AppendLine("                break;");
+        sb.AppendLine("            }");
+        sb.AppendLine("            catch (global::System.OperationCanceledException) when (__ct.IsCancellationRequested)");
+        sb.AppendLine("            {");
+        WriteDisposeFailedCandidate(sb);
+        sb.AppendLine("                throw;");
+        sb.AppendLine("            }");
+        WriteStreamRetryCatch(sb, method, retry);
+        sb.AppendLine("        }");
+        WriteStreamYields(sb);
+        sb.AppendLine("        // All attempts exhausted");
+        WriteRetryExhaustion(sb, method);
+        sb.AppendLine("    }");
+        sb.AppendLine();
+    }
+
+    // A failure before the first item: the attempt's enumerator is disposed, RetryOnException and
+    // the Exception DelayHint run as in the Task loop, and the wait observes __ct. The caller's
+    // cancellation is caught before this and rethrown, after the same disposal.
+    private static void WriteStreamRetryCatch(StringBuilder sb, MethodModel method, string retry)
+    {
+        sb.AppendLine("            catch (global::System.Exception __ex)");
+        sb.AppendLine("            {");
+        sb.AppendLine("                __lastEx = __ex;");
+        WriteDisposeFailedCandidate(sb);
+        WriteRetryOnExceptionCheck(sb, method);
+        var delay = $"{retry}.GetBackoffMs(__attempt)";
+        if (method.ExceptionDelayHintMethod is not null)
+        {
+            sb.AppendLine($"                var __hint = {method.ExceptionDelayHintMethod}(__ex);");
+            delay = $"{retry}.GetDelayMs(__attempt, __hint)";
+        }
+        sb.AppendLine($"                if (__attempt == {retry}.MaxAttempts - 1) break;");
+        sb.AppendLine($"                await global::System.Threading.Tasks.Task.Delay({delay}, __ct).ConfigureAwait(false);");
+        sb.AppendLine("            }");
+    }
+
+    // The enumerator of a failed attempt is disposed best-effort: the attempt's own exception is
+    // what the retry decides on and what reaches the caller, so an exception from DisposeAsync of
+    // an enumerator that already failed is discarded instead of replacing it.
+    private static void WriteDisposeFailedCandidate(StringBuilder sb)
+    {
+        sb.AppendLine("                if (__candidate is not null)");
+        sb.AppendLine("                {");
+        sb.AppendLine("                    try { await __candidate.DisposeAsync().ConfigureAwait(false); }");
+        sb.AppendLine("                    catch (global::System.Exception) { /* the attempt's own exception wins */ }");
+        sb.AppendLine("                }");
+    }
+
+    // The items of the attempt that reached its first one, with no catch around them; the
+    // enumerator is disposed however the consumer stops.
+    private static void WriteStreamYields(StringBuilder sb)
+    {
+        sb.AppendLine("        if (__enumerator is not null)");
+        sb.AppendLine("        {");
+        sb.AppendLine("            try");
+        sb.AppendLine("            {");
+        sb.AppendLine("                if (!__hasItem) yield break;");
+        sb.AppendLine("                yield return __enumerator.Current;");
+        sb.AppendLine("                while (await __enumerator.MoveNextAsync().ConfigureAwait(false))");
+        sb.AppendLine("                    yield return __enumerator.Current;");
+        sb.AppendLine("            }");
+        sb.AppendLine("            finally");
+        sb.AppendLine("            {");
+        sb.AppendLine("                await __enumerator.DisposeAsync().ConfigureAwait(false);");
+        sb.AppendLine("            }");
+        sb.AppendLine("            yield break;");
+        sb.AppendLine("        }");
     }
 
     private static void WriteDispatchCall(StringBuilder sb, MethodModel method, string receiver)
