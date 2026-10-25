@@ -63,3 +63,12 @@ Rule ID | Category             | Severity | Notes
 ZR0011  | ZeroAlloc.Resilience | Warning  | [RetryAttempt] has no effect without [Retry]
 ZR0012  | ZeroAlloc.Resilience | Error    | [RetryAttempt] parameter type not supported
 ZR0013  | ZeroAlloc.Resilience | Warning  | RethrowDeclined has no effect
+
+## Release 3.4.0
+
+### New Rules
+
+Rule ID | Category             | Severity | Notes
+--------|----------------------|----------|----------------------------------------
+ZR0014  | ZeroAlloc.Resilience | Error    | Policy not supported on a stream method
+ZR0015  | ZeroAlloc.Resilience | Warning  | Policy not applied to a stream method
