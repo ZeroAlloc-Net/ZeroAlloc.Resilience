@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.4.0](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v3.3.6...v3.4.0) (2026-10-25)
+
+
+### Features
+
+* retry an IAsyncEnumerable&lt;T&gt; method until its first item ([#256](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/256)) ([c70040e](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/c70040e8e5cfde16f4578eb6db77d8293e1015b6))
+
 ## [3.3.6](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v3.3.5...v3.3.6) (2026-10-21)
 
 
