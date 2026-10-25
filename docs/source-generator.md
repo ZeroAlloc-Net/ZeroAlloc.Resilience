@@ -443,3 +443,5 @@ the global namespace has no namespace part. File names are not a contract and ma
 | ZR0011 | Warning | `[RetryAttempt]` on a parameter of a method no `[Retry]` applies to, in an interface with resilience attributes, or of a method that is not an interface method, so the caller's argument is passed unchanged |
 | ZR0012 | Error | `[RetryAttempt]` on a parameter that is not an `int` or `int?` passed by value |
 | ZR0013 | Warning | `[Retry(RethrowDeclined = true)]` has no effect: the `[Retry]` has no `RetryOnException`, or every method it applies to returns a failure instead of throwing |
+| ZR0014 | Error | `[Timeout]`, `[CircuitBreaker]`, `[RateLimit]` or `[Retry]` with `PerAttemptTimeoutMs` on a method that returns `IAsyncEnumerable<T>`, which takes `[Retry]` alone |
+| ZR0015 | Warning | A policy a stream method cannot apply comes from the interface, or from an inherited method's attribute, so it is left off that stream method |

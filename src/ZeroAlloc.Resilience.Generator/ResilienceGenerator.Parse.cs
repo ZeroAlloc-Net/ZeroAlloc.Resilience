@@ -135,6 +135,7 @@ public sealed partial class ResilienceGenerator
 
             ReturnsByRef = member.ReturnsByRef || member.ReturnsByRefReadonly;
             IsAsync = IsAsyncType(member.ReturnType);
+            IsAsyncEnumerable = IsAsyncEnumerableType(member.ReturnType);
 
             // An async method cannot have ref, out, in or ref struct parameters, such as a
             // ReadOnlySpan<char>, so a method that has them is never wrapped in an async body:
@@ -174,6 +175,8 @@ public sealed partial class ResilienceGenerator
 
         public bool ReturnsByRef { get; }
         public bool IsAsync { get; }
+        // IAsyncEnumerable<T>: retried until its first item, and takes [Retry] alone.
+        public bool IsAsyncEnumerable { get; }
         public bool HasByRefOrRefLikeParameter { get; }
         public string? CancellationTokenParamName { get; }
 

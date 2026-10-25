@@ -1,13 +1,15 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using ZeroAlloc.Resilience;
 using ZeroAlloc.Resilience.AotSmoke;
 
-// Exercise the generator-emitted proxies under PublishAot=true: Retry, Result-aware retry,
-// Timeout, RateLimit, CircuitBreaker and the CircuitBreaker fallback. The Retry policy should
-// transparently swallow the first two simulated failures and return the third attempt's success.
+// Exercise the generator-emitted proxies under PublishAot=true: Retry, stream retry,
+// Result-aware retry, Timeout, RateLimit, CircuitBreaker and the CircuitBreaker fallback. The Retry
+// policy should transparently swallow the first two simulated failures and return the third
+// attempt's success.
 
 var inner = new FlakyImpl { FailTimes = 2 };
 var retry = new RetryPolicy(maxAttempts: 3, backoffMs: 1, jitter: false, perAttemptTimeoutMs: 0);
@@ -27,6 +29,17 @@ if (!string.Equals(happy, "ok:y", StringComparison.Ordinal))
     return Fail($"Happy-path expected 'ok:y', got '{happy}'");
 if (innerHappy.CallCount != 1)
     return Fail($"Happy-path expected 1 inner call, got {innerHappy.CallCount}");
+
+// Stream retry: a stream that fails before its first item is retried, then yields every item.
+var streamInner = new FlakyImpl { StreamFailTimes = 2 };
+var streamProxy = new IFlakyServiceResilienceProxy(streamInner, new FlakyServiceResiliencePolicies { Retry = retry });
+var streamed = new List<int>();
+await foreach (var item in streamProxy.StreamAsync(3, CancellationToken.None).ConfigureAwait(false))
+    streamed.Add(item);
+if (streamed is not [1, 2, 3])
+    return Fail($"Stream retry expected the items 1, 2, 3, got {streamed.Count} items");
+if (streamInner.StreamCallCount != 3)
+    return Fail($"Stream retry expected 3 inner streams (2 failures + 1 success), got {streamInner.StreamCallCount}");
 
 // Result-aware retry: a transient failed Result is retried, with the wait taken from the failure.
 var started = Stopwatch.GetTimestamp();

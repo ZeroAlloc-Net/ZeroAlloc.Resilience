@@ -303,6 +303,10 @@ public sealed partial class ResilienceGenerator : IIncrementalGenerator
             ValidateAttributeValues(state.Diagnostics, method.OwnCbAttr, CircuitBreakerRules, member.Name, method.Location);
         }
 
+        // ZR0014 and ZR0015: a stream method takes [Retry] alone, without PerAttemptTimeoutMs.
+        if (method.IsAsyncEnumerable)
+            ApplyStreamRules(state, method);
+
         // A method no policy applies to is forwarded to the inner service unchanged.
         if (!method.HasPolicy)
         {
@@ -322,7 +326,8 @@ public sealed partial class ResilienceGenerator : IIncrementalGenerator
         if (!ReportMethodDiagnostics(state, method))
             return;
 
-        state.Methods.Add(BuildMethodModel(state, method));
+        var model = BuildMethodModel(state, method);
+        state.Methods.Add(method.IsAsyncEnumerable ? WithStream(model, member) : model);
     }
 
     // The fallback name comes from the CircuitBreakerAttribute on the method or the
@@ -390,7 +395,8 @@ public sealed partial class ResilienceGenerator : IIncrementalGenerator
         method.RateLimitRejects = reportsRejections && method.RateLimit is not null;
         method.OpenCircuitRejects = reportsRejections && method.CircuitBreaker is not null && !method.FallbackConfigured;
         method.NonThrowingUnbuildable = method.Retry?.NonThrowing == true && method.ResultKind != ResultKind.ResilienceError;
-        method.Unwrappable = UnwrappableReason(method.IsAsync, method.HasByRefOrRefLikeParameter, method.ReturnsByRef);
+        // A stream's proxy is an async iterator, which cannot have those parameters either.
+        method.Unwrappable = UnwrappableReason(method.IsAsync || method.IsAsyncEnumerable, method.HasByRefOrRefLikeParameter, method.ReturnsByRef);
     }
 
     // ZR0013 for the method's own [Retry(RethrowDeclined = true)], at the attribute: without
@@ -485,8 +491,10 @@ public sealed partial class ResilienceGenerator : IIncrementalGenerator
             return false;
         }
 
-        // ZR0002: timeout but no CancellationToken
-        if ((method.Timeout is not null || method.Retry?.PerAttemptTimeoutMs > 0) && method.CancellationTokenParamName is null)
+        // ZR0002: timeout but no CancellationToken. A stream never applies PerAttemptTimeoutMs:
+        // ZR0014 or ZR0015 says so instead.
+        if ((method.Timeout is not null || (!method.IsAsyncEnumerable && method.Retry?.PerAttemptTimeoutMs > 0))
+            && method.CancellationTokenParamName is null)
         {
             state.Diagnostics.Add(Diagnostic.Create(
                 ResilienceDiagnostics.NoCancellationToken,
@@ -580,6 +588,85 @@ public sealed partial class ResilienceGenerator : IIncrementalGenerator
             RetryArgumentList: method.Retry is null ? null
                 : RetryArgumentList(member, replaceCancellationToken: method.CancellationTokenParamName is not null),
             FallbackArgumentList: method.Retry is null || method.FallbackName is null ? null : FallbackArgumentList(member));
+    }
+
+    // The model of a stream method: see MethodModel.IsAsyncEnumerable.
+    private static MethodModel WithStream(MethodModel model, IMethodSymbol member) =>
+        model with
+        {
+            IsAsyncEnumerable = true,
+            StreamElementTypeFqn = ((INamedTypeSymbol)member.ReturnType).TypeArguments[0].ToDisplayString(FqnFormat),
+            StreamParameterList = StreamParameterList(member.Parameters),
+        };
+
+    // ── Streams: IAsyncEnumerable<T> ───────────────────────────────────────────
+
+    private const string StreamRule =
+        "a stream method takes [Retry] alone, without PerAttemptTimeoutMs, and is retried only until its first item";
+
+    // A stream is retried only until its first item, and every other policy would have to act
+    // while the consumer reads it, so each is refused. On the method's own attribute that is
+    // ZR0014, an Error at the attribute. From the interface, or from the attribute of an
+    // inherited method, it is ZR0015, a Warning at the method, and the policy is left off this
+    // method only. A PerAttemptTimeoutMs of 0 is not set. The proxy's stream loop never reads
+    // RetryPolicy.PerAttemptTimeoutMs, so a runtime policy's value is ignored, not reported.
+    private static void ApplyStreamRules(InterfaceParse state, MethodParse method)
+    {
+        if (method.Timeout is not null)
+        {
+            Refuse("[Timeout]", method.OwnTimeoutAttr);
+            method.Timeout = null;
+        }
+        if (method.CircuitBreaker is not null)
+        {
+            Refuse("[CircuitBreaker]", method.OwnCbAttr);
+            method.CircuitBreaker = null;
+        }
+        if (method.RateLimit is not null)
+        {
+            Refuse("[RateLimit]", method.OwnRateLimitAttr);
+            method.RateLimit = null;
+        }
+        if (method.Retry is { PerAttemptTimeoutMs: > 0 })
+            Refuse("[Retry] PerAttemptTimeoutMs", method.OwnRetryAttr);
+
+        void Refuse(string policy, AttributeData? ownAttr)
+        {
+            var name = method.Member.Name;
+            if (ownAttr is not null && method.Entry.IsOwn)
+            {
+                state.Diagnostics.Add(Diagnostic.Create(ResilienceDiagnostics.StreamPolicyNotSupported,
+                    AttributeLocation(ownAttr, method.Location), policy, name, StreamRule));
+                return;
+            }
+
+            var (source, advice) = ownAttr is not null
+                ? ($"{method.Member.ContainingType.Name}.{name}", $"Remove {policy} from '{method.Member.ContainingType.Name}.{name}'")
+                : (state.Iface.Name, $"Move {policy} from '{state.Iface.Name}' onto the methods that need it");
+            state.Diagnostics.Add(Diagnostic.Create(ResilienceDiagnostics.StreamPolicyNotApplied,
+                method.Location, policy, source, name, StreamRule, advice));
+        }
+    }
+
+    // The method's parameters for the stream iterator: see MethodModel.StreamParameterList.
+    private static string StreamParameterList(ImmutableArray<IParameterSymbol> parameters)
+    {
+        const string token = "[global::System.Runtime.CompilerServices.EnumeratorCancellation] global::System.Threading.CancellationToken __ct";
+        var renamed = false;
+        var list = new System.Collections.Generic.List<string>(parameters.Length + 1);
+        foreach (var p in parameters)
+        {
+            if (!renamed && string.Equals(p.Type.ToDisplayString(), "System.Threading.CancellationToken", StringComparison.Ordinal))
+            {
+                list.Add(token);
+                renamed = true;
+                continue;
+            }
+            list.Add($"{p.Type.ToDisplayString(FqnFormat)} {EscapedName(p)}");
+        }
+        if (!renamed)
+            list.Add(token);
+        return string.Join(", ", list);
     }
 
     // The slot each policy reads: the interface's, or the method's own when it has its own
@@ -1369,6 +1456,9 @@ public sealed partial class ResilienceGenerator : IIncrementalGenerator
                    or "System.Threading.Tasks.Task"
                    or "System.Threading.Tasks.Task<TResult>";
     }
+
+    private static bool IsAsyncEnumerableType(ITypeSymbol type) =>
+        string.Equals(type.OriginalDefinition.ToDisplayString(), "System.Collections.Generic.IAsyncEnumerable<T>", StringComparison.Ordinal);
 
     private static ITypeSymbol? UnwrapAsyncType(ITypeSymbol returnType) =>
         returnType is INamedTypeSymbol { TypeArguments.Length: 1 } named ? named.TypeArguments[0] : null;

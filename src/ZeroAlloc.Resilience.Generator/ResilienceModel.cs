@@ -142,7 +142,17 @@ internal sealed record MethodModel(
     // The arguments of the fallback call when a parameter has [RetryAttempt]: each [RetryAttempt]
     // parameter gets the first attempt's value, since the caller's argument is never passed on.
     // Null without [RetryAttempt].
-    string? FallbackArgumentList = null
+    string? FallbackArgumentList = null,
+    // The method returns IAsyncEnumerable<T>: the proxy is an async iterator that retries until
+    // the first item, see ResilienceWriter.WriteStreamMethod. IsAsync stays false, since the
+    // method itself returns its stream synchronously.
+    bool IsAsyncEnumerable = false,
+    // The T of IAsyncEnumerable<T>, as in global::System.Collections.Generic.IAsyncEnumerator<T>.
+    string? StreamElementTypeFqn = null,
+    // The iterator's parameters: the method's, with the first CancellationToken renamed __ct and
+    // marked [EnumeratorCancellation], or one such parameter appended when it has none; `params`
+    // dropped, so the appended parameter can follow it. Null for a method that is not a stream.
+    string? StreamParameterList = null
 )
 {
     // Methods returning a Result whose failure the generator can build, sync or async, return
