@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.4.1](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v3.4.0...v3.4.1) (2026-11-06)
+
+
+### Bug Fixes
+
+* report a total timeout as the Timeout policy, not Retry ([#268](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/268)) ([262f4c3](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/262f4c320083ffe67d1af2557c74e4a76b854f2e)), closes [#263](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/263)
+
 ## [3.4.0](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v3.3.6...v3.4.0) (2026-10-25)
 
 
