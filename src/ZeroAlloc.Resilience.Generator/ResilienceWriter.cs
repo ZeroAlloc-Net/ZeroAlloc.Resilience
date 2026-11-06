@@ -221,7 +221,7 @@ internal static class ResilienceWriter
         sb.AppendLine("        }");
         WriteStreamYields(sb);
         sb.AppendLine("        // All attempts exhausted");
-        WriteRetryExhaustion(sb, method);
+        WriteRetryExhaustion(sb, method, hasTotalTimeout: false);
         sb.AppendLine("    }");
         sb.AppendLine();
     }
@@ -441,7 +441,7 @@ internal static class ResilienceWriter
         sb.AppendLine("            }");
         sb.AppendLine("        }");
         sb.AppendLine("        // All attempts exhausted");
-        WriteRetryExhaustion(sb, method);
+        WriteRetryExhaustion(sb, method, hasTotalTimeout);
     }
 
     // By default a declined exception leaves the loop through exhaustion, as documented since
@@ -466,21 +466,39 @@ internal static class ResilienceWriter
         ?? (method.HasCancellationToken ? method.ArgumentListWithToken : method.ArgumentList);
 
     // Every attempt threw, the total timeout ended the retries after an exception, or
-    // RetryOnException declined the last exception without RethrowDeclined in effect.
-    private static void WriteRetryExhaustion(StringBuilder sb, MethodModel method)
+    // RetryOnException declined the last exception without RethrowDeclined in effect. When the
+    // total timeout fired, the error names it: PolicyType Timeout, with the last attempt's
+    // exception kept as the inner exception. The check is made here, after the loop, because the
+    // loop leaves through the same break whichever way it ended.
+    private static void WriteRetryExhaustion(StringBuilder sb, MethodModel method, bool hasTotalTimeout)
     {
+        const string timedOut = "__totalCts.IsCancellationRequested";
         // NonThrowing on a return type that cannot hold a ResilienceError never reaches the writer:
         // it is ZR0003, or ZR0006 with NonThrowing left off an inherited default method.
         if (method.ReturnsFailureResult)
         {
             // Result return types get a failure of their own type instead of an exception.
-            sb.AppendLine($"        return {FailureExpression(method, "\"Retry\"", "__lastEx?.Message ?? \"All retry attempts failed.\"", "__lastEx")};");
+            var policy = "\"Retry\"";
+            var reason = "__lastEx?.Message ?? \"All retry attempts failed.\"";
+            if (hasTotalTimeout)
+            {
+                policy = $"({timedOut} ? \"Timeout\" : {policy})";
+                reason = $"({timedOut} ? \"Total timeout elapsed.\" : ({reason}))";
+            }
+            sb.AppendLine($"        return {FailureExpression(method, policy, reason, "__lastEx")};");
         }
         else
         {
             // Also Result<T, E> with a foreign E: every attempt threw, so there is no inner
             // Result to return and no way to build an E.
-            sb.AppendLine("        throw new global::ZeroAlloc.Resilience.ResilienceException(global::ZeroAlloc.Resilience.ResiliencePolicy.Retry, \"All retry attempts failed.\", __lastEx);");
+            var policy = "global::ZeroAlloc.Resilience.ResiliencePolicy.Retry";
+            var reason = "\"All retry attempts failed.\"";
+            if (hasTotalTimeout)
+            {
+                policy = $"({timedOut} ? global::ZeroAlloc.Resilience.ResiliencePolicy.Timeout : {policy})";
+                reason = $"({timedOut} ? \"Total timeout elapsed.\" : {reason})";
+            }
+            sb.AppendLine($"        throw new global::ZeroAlloc.Resilience.ResilienceException({policy}, {reason}, __lastEx);");
         }
     }
 
@@ -524,7 +542,7 @@ internal static class ResilienceWriter
         sb.AppendLine("        }");
         sb.AppendLine("        // All attempts exhausted, or a failure that is not retried");
         sb.AppendLine("        if (__lastWasResult) return __lastResult;");
-        WriteRetryExhaustion(sb, method);
+        WriteRetryExhaustion(sb, method, hasTotalTimeout);
     }
 
     // The Result-aware loop's catch: an exception is a breaker failure, and RetryOnException and
