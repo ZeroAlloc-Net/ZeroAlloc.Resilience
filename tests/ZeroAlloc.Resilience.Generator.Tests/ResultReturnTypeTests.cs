@@ -62,7 +62,7 @@ public class ResultReturnTypeTests
         GeneratedSource(compilation).Should()
             .Contain("new global::ZeroAlloc.Resilience.ResilienceError(\"RateLimit\"")
             .And.Contain("new global::ZeroAlloc.Resilience.ResilienceError(\"CircuitBreaker\"")
-            .And.Contain("new global::ZeroAlloc.Resilience.ResilienceError(\"Retry\"");
+            .And.Contain("new global::ZeroAlloc.Resilience.ResilienceError((__totalCts.IsCancellationRequested ? \"Timeout\" : \"Retry\")");
     }
 
     [Theory]
@@ -258,7 +258,7 @@ public class ResultReturnTypeTests
 
         errors.Should().BeEmpty();
         GeneratedSource(compilation).Should()
-            .Contain("global::ZeroAlloc.Results.UnitResult<global::ZeroAlloc.Resilience.ResilienceError>.Failure(new global::ZeroAlloc.Resilience.ResilienceError(\"Retry\"");
+            .Contain("global::ZeroAlloc.Results.UnitResult<global::ZeroAlloc.Resilience.ResilienceError>.Failure(new global::ZeroAlloc.Resilience.ResilienceError((__totalCts.IsCancellationRequested ? \"Timeout\" : \"Retry\")");
     }
 
     // Foreign error types that compiled and threw before #151 keep compiling and throwing.

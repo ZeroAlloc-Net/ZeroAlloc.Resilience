@@ -95,7 +95,7 @@ internal sealed class IApiResilienceProxy : global::T.IApi
         }
         // All attempts exhausted, or a failure that is not retried
         if (__lastWasResult) return __lastResult;
-        return global::ZeroAlloc.Results.Result<string>.Failure(__lastEx?.Message ?? "All retry attempts failed.");
+        return global::ZeroAlloc.Results.Result<string>.Failure((__totalCts.IsCancellationRequested ? "Total timeout elapsed." : (__lastEx?.Message ?? "All retry attempts failed.")));
     }
 
 }

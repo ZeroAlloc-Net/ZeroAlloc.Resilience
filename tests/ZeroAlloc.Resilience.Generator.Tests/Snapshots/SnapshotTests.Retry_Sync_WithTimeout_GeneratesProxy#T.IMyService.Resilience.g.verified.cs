@@ -69,7 +69,7 @@ internal sealed class IMyServiceResilienceProxy : global::T.IMyService
             }
         }
         // All attempts exhausted
-        throw new global::ZeroAlloc.Resilience.ResilienceException(global::ZeroAlloc.Resilience.ResiliencePolicy.Retry, "All retry attempts failed.", __lastEx);
+        throw new global::ZeroAlloc.Resilience.ResilienceException((__totalCts.IsCancellationRequested ? global::ZeroAlloc.Resilience.ResiliencePolicy.Timeout : global::ZeroAlloc.Resilience.ResiliencePolicy.Retry), (__totalCts.IsCancellationRequested ? "Total timeout elapsed." : "All retry attempts failed."), __lastEx);
     }
 
 }

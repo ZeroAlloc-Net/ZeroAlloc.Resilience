@@ -94,7 +94,7 @@ internal sealed class IApiResilienceProxy : global::T.IApi
         }
         // All attempts exhausted, or a failure that is not retried
         if (__lastWasResult) return __lastResult;
-        throw new global::ZeroAlloc.Resilience.ResilienceException(global::ZeroAlloc.Resilience.ResiliencePolicy.Retry, "All retry attempts failed.", __lastEx);
+        throw new global::ZeroAlloc.Resilience.ResilienceException((__totalCts.IsCancellationRequested ? global::ZeroAlloc.Resilience.ResiliencePolicy.Timeout : global::ZeroAlloc.Resilience.ResiliencePolicy.Retry), (__totalCts.IsCancellationRequested ? "Total timeout elapsed." : "All retry attempts failed."), __lastEx);
     }
 
     public global::ZeroAlloc.Results.Result<int, global::T.HttpError> Count()

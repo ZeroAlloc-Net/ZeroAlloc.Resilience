@@ -110,7 +110,7 @@ public class TimeoutIntegrationTests
         var act = async () => await proxy.GetAsync("x", CancellationToken.None);
 
         var thrown = await act.Should().ThrowAsync<ResilienceException>();
-        thrown.Which.Policy.Should().Be(ResiliencePolicy.Retry);
+        thrown.Which.Policy.Should().Be(ResiliencePolicy.Timeout);
         inner.Calls.Should().Be(1);
         inner.CancelledCalls.Should().Be(1);
     }

@@ -7,7 +7,8 @@ using ZeroAlloc.Results;
 namespace ZeroAlloc.Resilience.Tests;
 
 // A [Timeout] that fires while the retry loop waits out its backoff ends the loop through
-// exhaustion: a Failure for a Result method, a ResilienceException otherwise. It never lets the
+// exhaustion, reported as the Timeout policy: a Failure for a Result method, a ResilienceException
+// otherwise. The last attempt's exception stays as the inner exception. It never lets the
 // wait's own TaskCanceledException escape. The backoff is 60 s, so a wait that ignored the total
 // timeout would hit the 10 s test timeout. The caller's own cancellation still propagates.
 
@@ -98,7 +99,7 @@ public class TotalTimeoutDuringBackoffIntegrationTests
             : async () => await proxy.GetAsync(CancellationToken.None);
 
         var thrown = await act.Should().ThrowExactlyAsync<ResilienceException>();
-        thrown.Which.Policy.Should().Be(ResiliencePolicy.Retry);
+        thrown.Which.Policy.Should().Be(ResiliencePolicy.Timeout);
         thrown.Which.InnerException.Should().BeOfType<InvalidOperationException>();
         Stopwatch.GetElapsedTime(started).Should().BeLessThan(TimeSpan.FromSeconds(5));
         inner.Calls.Should().Be(1);
@@ -121,7 +122,7 @@ public class TotalTimeoutDuringBackoffIntegrationTests
             : await proxy.GetResultAsync(CancellationToken.None);
 
         result.IsFailure.Should().BeTrue();
-        result.Error.Should().Be("boom");
+        result.Error.Should().Be("Total timeout elapsed.");
         Stopwatch.GetElapsedTime(started).Should().BeLessThan(TimeSpan.FromSeconds(5));
         inner.Calls.Should().Be(1);
     }
@@ -129,7 +130,7 @@ public class TotalTimeoutDuringBackoffIntegrationTests
     [Theory(Timeout = 10_000)]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task TypedResult_TimeoutDuringBackoff_ReturnsRetryFailure(bool breaker)
+    public async Task TypedResult_TimeoutDuringBackoff_ReturnsTimeoutFailure(bool breaker)
     {
         var inner = new FailingBackoffApi();
         using var cb = new CircuitBreakerPolicy(maxFailures: 10, resetMs: 60_000, halfOpenProbes: 1);
@@ -138,7 +139,8 @@ public class TotalTimeoutDuringBackoffIntegrationTests
         var result = await proxy.GetTypedAsync(CancellationToken.None);
 
         result.IsFailure.Should().BeTrue();
-        result.Error.PolicyType.Should().Be(nameof(ResiliencePolicy.Retry));
+        result.Error.PolicyType.Should().Be(nameof(ResiliencePolicy.Timeout));
+        result.Error.Reason.Should().Be("Total timeout elapsed.");
         result.Error.InnerException.Should().BeOfType<InvalidOperationException>();
         inner.Calls.Should().Be(1);
     }
