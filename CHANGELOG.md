@@ -1,5 +1,17 @@
 # Changelog
 
+## [3.5.0](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v3.4.1...v3.5.0) (2026-11-11)
+
+
+### Features
+
+* add net11.0 support ([#279](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/279)) ([456b786](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/456b78619cd86432e5c7f77c67b14d0dc443657f))
+
+
+### Documentation
+
+* add context7.json to claim the library on Context7 ([#275](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/275)) ([afdb451](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/afdb4517b130c5cfc10ff0c44bfbe5b24190dc01))
+
 ## [3.4.1](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v3.4.0...v3.4.1) (2026-11-06)
 
 
