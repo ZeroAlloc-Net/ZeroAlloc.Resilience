@@ -1,7 +1,8 @@
 # AGENTS.md: ZeroAlloc.Resilience
 
 Source-generated resilience for .NET: `[Retry]`, `[Timeout]`, `[RateLimit]` and `[CircuitBreaker]` on an
-interface compile into a proxy plus a DI extension, with no allocation on the happy path. Consumers install
+interface compile into a proxy plus a DI extension, with no allocation on the happy path unless a timeout
+is configured (`[Timeout]` or `[Retry(PerAttemptTimeoutMs = ...)]`). Consumers install
 one NuGet package, `ZeroAlloc.Resilience`; the generator ships inside it.
 
 ## Layout
@@ -68,8 +69,9 @@ dotnet test tests/ZeroAlloc.Resilience.Tests -c Release --no-build -f net10.0 --
 
 - Allocation budget: the happy path of `[Retry]`, `[CircuitBreaker]`, `[RateLimit]` and the policy
   stack without `[Timeout]` is exactly 0 B, asserted in `tests/ZeroAlloc.Resilience.Tests/HappyPathAllocationTests.cs`.
-  `[Timeout]` is the documented exception: it creates one linked `CancellationTokenSource` per call. Its
-  test and `docs/performance.md` say so; do not claim 0 B for a timeout path.
+  Timeouts are the documented exception: `[Timeout]` creates one linked `CancellationTokenSource` per
+  call, and `[Retry(PerAttemptTimeoutMs = ...)]` one per attempt (`docs/core-concepts/retry.md`). The
+  allocation tests cover neither; do not claim 0 B for a timeout path.
 - This repo's benchmark project targets `net10.0` only, unlike the org rule of targeting every LTS
   framework. It compares against Polly.Core, so published ratios come from that one runtime.
 - The AOT smoke targets `net11.0` and makes `IL2026`, `IL2067`, `IL2075`, `IL2091`, `IL3050` and `IL3051`
