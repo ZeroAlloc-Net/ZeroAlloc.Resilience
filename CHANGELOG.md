@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.5.1](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v3.5.0...v3.5.1) (2026-11-16)
+
+
+### Bug Fixes
+
+* embed PDBs so Go to Definition shows the package source ([#294](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/294)) ([1fba454](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/1fba454b67919c66758688ceae148f5b98f67cf1))
+
 ## [3.5.0](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v3.4.1...v3.5.0) (2026-11-11)
 
 
