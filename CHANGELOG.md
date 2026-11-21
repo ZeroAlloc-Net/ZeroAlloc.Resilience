@@ -1,5 +1,19 @@
 # Changelog
 
+## [4.0.0](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v3.5.1...v4.0.0) (2026-11-21)
+
+
+### ⚠ BREAKING CHANGES
+
+* net8.0 and net9.0 assets are no longer shipped; an exception RetryOnException declines is now rethrown unchanged by default instead of wrapped in ResilienceException, and RethrowDeclined = false restores the wrapper; ZR0013 now also reports RethrowDeclined = false where it has no effect; the package no longer depends on Microsoft.Extensions.DependencyInjection.Abstractions, so a project calling the generated Add{Service}Resilience must reference it itself. See the migration notes in the release and in docs/guides/migrating-to-v4.md.
+
+### Features
+
+* drop the Microsoft.Extensions.DependencyInjection.Abstractions package dependency ([4626e9d](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/4626e9d30b555cce144073d65385c4be59590e5b))
+* report ZR0013 for a RethrowDeclined set to either value where it has no effect ([4626e9d](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/4626e9d30b555cce144073d65385c4be59590e5b))
+* rethrow declined exceptions by default, RethrowDeclined = false keeps the wrapper ([4626e9d](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/4626e9d30b555cce144073d65385c4be59590e5b))
+* target net10.0 and net11.0, drop net8.0 and net9.0 ([4626e9d](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/4626e9d30b555cce144073d65385c4be59590e5b))
+
 ## [3.5.1](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v3.5.0...v3.5.1) (2026-11-16)
 
 
