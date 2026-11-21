@@ -29,7 +29,7 @@ public interface IExternalService
 | `NonThrowing` | `bool` | `false` | Asserts the method returns `Result<T, ResilienceError>` or `UnitResult<ResilienceError>` |
 | `RetryWhen` | `string?` | `null` | A static `bool M(E error)`: which failed Results to retry. See [Retrying failed Results](#retrying-failed-results) |
 | `RetryOnException` | `string?` | `null` | A static `bool M(Exception exception)`: which exceptions to retry |
-| `RethrowDeclined` | `bool` | `true` | Rethrow an exception `RetryOnException` declines unchanged; `false` wraps it in `ResilienceException`. Result methods return a failure either way. See [Declined exceptions](#declined-exceptions-and-rethrowdeclined) |
+| `RethrowDeclined` | `bool` | `true` | Rethrow an exception `RetryOnException` declines unchanged; `false` wraps it in `ResilienceException`. A method returning `Result`, `Result<T>`, `Result<T, ResilienceError>` or `UnitResult<ResilienceError>` returns a failure either way. See [Declined exceptions](#declined-exceptions-and-rethrowdeclined) |
 | `DelayHint` | `string?` | `null` | A static `TimeSpan? M(E error)` and/or `TimeSpan? M(Exception exception)`: the wait before the next attempt. See [Delay hints](#delay-hints-and-maxdelayms) |
 | `MaxDelayMs` | `int` | `RetryPolicy.MaxBackoffMs`, no cap | The longest wait between attempts, for the backoff and a hint alike |
 
@@ -129,7 +129,7 @@ public interface IOrdersApi
 
 `RethrowDeclined = false` sends a declined exception through exhaustion instead, like the last of several failed attempts, which was the default before 4.0. A method that throws then throws `ResilienceException(ResiliencePolicy.Retry, "All retry attempts failed.", exception)`, with the declined exception as `InnerException`.
 
-- **Result methods are unaffected.** A method returning `Result`, `Result<T>`, `Result<T, ResilienceError>` or `UnitResult<ResilienceError>` never throws, so it returns its exhaustion failure for a declined exception whatever `RethrowDeclined` is, carrying the exception where the error type can hold it. `NonThrowing` keeps asserting exactly that. A `Result<T, E>` with any other `E` cannot hold the exception, so it throws, and `RethrowDeclined` applies to it.
+- **Methods that return failures are unaffected.** A method returning `Result`, `Result<T>`, `Result<T, ResilienceError>` or `UnitResult<ResilienceError>` never throws, so it returns its exhaustion failure for a declined exception whatever `RethrowDeclined` is, carrying the exception where the error type can hold it. `NonThrowing` keeps asserting exactly that. A `Result<T, E>` with any other `E` cannot hold the exception, so it throws, and `RethrowDeclined` applies to it.
 - **The circuit breaker counts a declined exception as a failure** either way.
 - **Without `RetryOnException`,** nothing is declined and `RethrowDeclined` has no effect.
 
