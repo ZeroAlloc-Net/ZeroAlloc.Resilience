@@ -467,10 +467,9 @@ internal static class ResilienceWriter
 
     // Every attempt threw, the total timeout ended the retries after an exception, or
     // RetryOnException declined the last exception with RethrowDeclined = false, or on a method
-    // that returns failures. When the
-    // total timeout fired, the error names it: PolicyType Timeout, with the last attempt's
-    // exception kept as the inner exception. The check is made here, after the loop, because the
-    // loop leaves through the same break whichever way it ended.
+    // that returns failures. When the total timeout fired, the error names it: PolicyType Timeout,
+    // with the last attempt's exception kept as the inner exception. The check is made here, after
+    // the loop, because the loop leaves through the same break whichever way it ended.
     private static void WriteRetryExhaustion(StringBuilder sb, MethodModel method, bool hasTotalTimeout)
     {
         const string timedOut = "__totalCts.IsCancellationRequested";
