@@ -129,7 +129,7 @@ public interface IOrdersApi
 
 `RethrowDeclined = false` sends a declined exception through exhaustion instead, like the last of several failed attempts, which was the default before 4.0. A method that throws then throws `ResilienceException(ResiliencePolicy.Retry, "All retry attempts failed.", exception)`, with the declined exception as `InnerException`.
 
-- **Methods that return failures are unaffected.** A method returning `Result`, `Result<T>`, `Result<T, ResilienceError>` or `UnitResult<ResilienceError>` never throws, so it returns its exhaustion failure for a declined exception whatever `RethrowDeclined` is, carrying the exception where the error type can hold it. `NonThrowing` keeps asserting exactly that. A `Result<T, E>` with any other `E` cannot hold the exception, so it throws, and `RethrowDeclined` applies to it.
+- **Methods that return failures are unaffected.** A method returning `Result`, `Result<T>`, `Result<T, ResilienceError>` or `UnitResult<ResilienceError>` returns its exhaustion failure for a declined exception whatever `RethrowDeclined` is, instead of throwing it, carrying the exception where the error type can hold it. `NonThrowing` keeps asserting exactly that. This covers declined exceptions only: an exception thrown by `RetryOnException` or `RetryWhen` itself, or the caller's own cancellation, still reaches the caller. A `Result<T, E>` with any other `E` cannot hold the exception, so it throws, and `RethrowDeclined` applies to it.
 - **The circuit breaker counts a declined exception as a failure** either way.
 - **Without `RetryOnException`,** nothing is declined and `RethrowDeclined` has no effect.
 
