@@ -152,16 +152,21 @@ public class RethrowDeclinedDiagnosticTests
 
     // ── Negative ───────────────────────────────────────────────────────────────
 
+    // RethrowDeclined = false is the opt-out back to the 3.x wrapper, so it has an effect here too.
     [Theory]
-    [InlineData("ValueTask<string> GetAsync(CancellationToken ct);")]
-    [InlineData("string Get(CancellationToken ct);")]
-    [InlineData("Task SendAsync(CancellationToken ct);")]
+    [InlineData("ValueTask<string> GetAsync(CancellationToken ct);", "true")]
+    [InlineData("ValueTask<string> GetAsync(CancellationToken ct);", "false")]
+    [InlineData("string Get(CancellationToken ct);", "true")]
+    [InlineData("string Get(CancellationToken ct);", "false")]
+    [InlineData("Task SendAsync(CancellationToken ct);", "true")]
+    [InlineData("Task SendAsync(CancellationToken ct);", "false")]
     // A foreign error type cannot hold the exception, so the method throws it.
-    [InlineData("ValueTask<Result<string, HttpError>> GetAsync(CancellationToken ct);")]
-    public void WithRetryOnException_OnAMethodThatThrows_ReportsNothing(string method)
+    [InlineData("ValueTask<Result<string, HttpError>> GetAsync(CancellationToken ct);", "true")]
+    [InlineData("ValueTask<Result<string, HttpError>> GetAsync(CancellationToken ct);", "false")]
+    public void WithRetryOnException_OnAMethodThatThrows_ReportsNothing(string method, string value)
     {
         var interfaceLevel = Usings + $$"""
-            [Retry(RetryOnException = nameof(IsRetryable), RethrowDeclined = true)]
+            [Retry(RetryOnException = nameof(IsRetryable), RethrowDeclined = {{value}})]
             public interface IApi
             {
                 {{method}}
@@ -171,7 +176,7 @@ public class RethrowDeclinedDiagnosticTests
         var methodLevel = Usings + $$"""
             public interface IApi
             {
-                [Retry(RetryOnException = nameof(IsRetryable), RethrowDeclined = true)]
+                [Retry(RetryOnException = nameof(IsRetryable), RethrowDeclined = {{value}})]
                 {{method}}
                 static bool IsRetryable(Exception exception) => true;
             }
@@ -184,11 +189,13 @@ public class RethrowDeclinedDiagnosticTests
     // An interface-level [Retry] over a mix of methods has an effect on the throwing ones. Its
     // Result methods are not reported: they need no change, and the warning could only be
     // silenced by moving the [Retry] onto every throwing method.
-    [Fact]
-    public void InterfaceLevel_OverAMixOfMethods_ReportsNothing()
+    [Theory]
+    [InlineData("true")]
+    [InlineData("false")]
+    public void InterfaceLevel_OverAMixOfMethods_ReportsNothing(string value)
     {
-        var source = Usings + """
-            [Retry(RetryOnException = nameof(IsRetryable), RethrowDeclined = true)]
+        var source = Usings + $$"""
+            [Retry(RetryOnException = nameof(IsRetryable), RethrowDeclined = {{value}})]
             public interface IApi
             {
                 ValueTask<string> GetAsync(CancellationToken ct);
@@ -224,14 +231,16 @@ public class RethrowDeclinedDiagnosticTests
 
     // An interface whose methods all have their own [Retry] applies its own to none of them;
     // that is not what ZR0013 is about.
-    [Fact]
-    public void InterfaceLevel_ShadowedOnEveryMethod_ReportsNothing()
+    [Theory]
+    [InlineData("true")]
+    [InlineData("false")]
+    public void InterfaceLevel_ShadowedOnEveryMethod_ReportsNothing(string value)
     {
-        var source = Usings + """
-            [Retry(RetryOnException = nameof(IsRetryable), RethrowDeclined = true)]
+        var source = Usings + $$"""
+            [Retry(RetryOnException = nameof(IsRetryable), RethrowDeclined = {{value}})]
             public interface IApi
             {
-                [Retry(RetryOnException = nameof(IsRetryable), RethrowDeclined = true)]
+                [Retry(RetryOnException = nameof(IsRetryable), RethrowDeclined = {{value}})]
                 ValueTask<string> GetAsync(CancellationToken ct);
                 static bool IsRetryable(Exception exception) => true;
             }
