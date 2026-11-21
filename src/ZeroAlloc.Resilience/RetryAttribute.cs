@@ -38,23 +38,23 @@ public sealed class RetryAttribute : Attribute
 
     /// <summary>
     /// The name of a static method <c>bool M(Exception exception)</c> on the interface or a base
-    /// interface. A thrown exception it returns <see langword="false"/> for ends the retries, and
-    /// goes through the same exhaustion as the last of several failed attempts, unless
-    /// <see cref="RethrowDeclined"/> is set. Default: <see langword="null"/>, every exception is
-    /// retried.
+    /// interface. A thrown exception it returns <see langword="false"/> for ends the retries. It
+    /// is rethrown unchanged, or, with <see cref="RethrowDeclined"/> set to
+    /// <see langword="false"/>, goes through the same exhaustion as the last of several failed
+    /// attempts. Default: <see langword="null"/>, every exception is retried.
     /// </summary>
     public string? RetryOnException { get; init; }
 
     /// <summary>
-    /// When <see langword="true"/>, an exception <see cref="RetryOnException"/> declines is
-    /// rethrown unchanged, with its original stack trace, instead of being wrapped in a
-    /// <see cref="ResilienceException"/> that says every retry attempt failed. A method returning
-    /// <c>Result</c>, <c>Result&lt;T&gt;</c>, <c>Result&lt;T, ResilienceError&gt;</c> or
-    /// <c>UnitResult&lt;ResilienceError&gt;</c> never throws, so it returns a failure either way.
-    /// Has no effect without <see cref="RetryOnException"/>. Default: <see langword="false"/>;
-    /// the next major version makes rethrowing the default.
+    /// When <see langword="true"/>, the default, an exception <see cref="RetryOnException"/>
+    /// declines is rethrown unchanged, with its original stack trace: it was never retried. When
+    /// <see langword="false"/>, it is wrapped in a <see cref="ResilienceException"/> instead, as
+    /// before version 4. A method returning <c>Result</c>, <c>Result&lt;T&gt;</c>,
+    /// <c>Result&lt;T, ResilienceError&gt;</c> or <c>UnitResult&lt;ResilienceError&gt;</c> never
+    /// throws, so it returns a failure either way. Has no effect without
+    /// <see cref="RetryOnException"/>. Default: <see langword="true"/>.
     /// </summary>
-    public bool RethrowDeclined { get; init; }
+    public bool RethrowDeclined { get; init; } = true;
 
     /// <summary>
     /// The name of a static method, or overload set, on the interface or a base interface:

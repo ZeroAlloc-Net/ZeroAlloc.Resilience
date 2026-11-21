@@ -112,7 +112,7 @@ public class ResultAwareRetryTests
                         {
                             __lastEx = __ex;
                             __lastWasResult = false;
-                            if (!global::Repro.IApi.IsTransientException(__ex)) break;
+                            if (!global::Repro.IApi.IsTransientException(__ex)) throw;
                             __hint = global::Repro.IApi.RetryAfter(__ex);
                         }
                         if (__lastWasResult)

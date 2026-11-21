@@ -23,8 +23,8 @@ public interface IStreamApi
     static TimeSpan? RetryAfter(Exception exception) => exception is HintedException hinted ? TimeSpan.FromMilliseconds(hinted.RetryAfterMs) : null;
 }
 
-[Retry(MaxAttempts = 3, BackoffMs = 1, RetryOnException = nameof(IsTransient), RethrowDeclined = true)]
-public interface IRethrowingStreamApi
+[Retry(MaxAttempts = 3, BackoffMs = 1, RetryOnException = nameof(IsTransient), RethrowDeclined = false)]
+public interface IWrappingStreamApi
 {
     IAsyncEnumerable<int> StreamAsync(string id, CancellationToken ct);
 
@@ -116,7 +116,7 @@ public sealed class ScriptedEnumerator(StreamAttempt attempt, Action onFailure) 
     }
 }
 
-public sealed class ScriptedStreamApi(params StreamAttempt[] attempts) : IStreamApi, IRethrowingStreamApi, ISlowStreamApi
+public sealed class ScriptedStreamApi(params StreamAttempt[] attempts) : IStreamApi, IWrappingStreamApi, ISlowStreamApi
 {
     private readonly List<ScriptedEnumerator> _enumerators = new();
 
@@ -283,10 +283,11 @@ public class AsyncEnumerableIntegrationTests
     {
         var declined = Permanent("a");
         var inner = new ScriptedStreamApi(StreamAttempt.Failing(declined), Yields(1));
+        IWrappingStreamApi proxy = new IWrappingStreamApiResilienceProxy(inner, new WrappingStreamApiResiliencePolicies());
 
-        var act = () => Collect(Proxy(inner).StreamAsync("a", CancellationToken.None));
+        var act = () => Collect(proxy.StreamAsync("a", CancellationToken.None));
 
-        // Without RethrowDeclined, a declined exception goes through exhaustion, as for a Task.
+        // With RethrowDeclined = false, a declined exception goes through exhaustion, as for a Task.
         // Red: drop the RetryOnException check from the stream's catch.
         var thrown = await act.Should().ThrowExactlyAsync<ResilienceException>();
         // Red: pass `null` in place of `__lastEx` to the exhaustion's ResilienceException.
@@ -295,15 +296,14 @@ public class AsyncEnumerableIntegrationTests
     }
 
     [Fact]
-    public async Task RethrowDeclined_rethrows_the_declined_exception_of_a_stream()
+    public async Task By_default_the_declined_exception_of_a_stream_is_rethrown()
     {
         var declined = Permanent("a");
         var inner = new ScriptedStreamApi(StreamAttempt.Failing(declined), StreamAttempt.Failing(declined), Yields(1));
-        IRethrowingStreamApi proxy = new IRethrowingStreamApiResilienceProxy(inner, new RethrowingStreamApiResiliencePolicies());
 
-        var act = () => Collect(proxy.StreamAsync("a", CancellationToken.None));
+        var act = () => Collect(Proxy(inner).StreamAsync("a", CancellationToken.None));
 
-        // Red: emit `break;` in place of `throw;` for RethrowDeclined.
+        // Red: emit `break;` in place of `throw;` for the default RethrowDeclined.
         var thrown = await act.Should().ThrowExactlyAsync<ArgumentException>();
         // Red: throw a new ArgumentException wrapping the declined one in place of `throw;`.
         thrown.Which.Should().BeSameAs(declined);

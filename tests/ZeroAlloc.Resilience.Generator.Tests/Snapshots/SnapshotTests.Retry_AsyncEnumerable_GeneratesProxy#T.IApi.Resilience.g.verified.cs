@@ -62,7 +62,7 @@ internal sealed class IApiResilienceProxy : global::T.IApi
                     try { await __candidate.DisposeAsync().ConfigureAwait(false); }
                     catch (global::System.Exception) { /* the attempt's own exception wins */ }
                 }
-                if (!global::T.IApi.IsTransient(__ex)) break;
+                if (!global::T.IApi.IsTransient(__ex)) throw;
                 var __hint = global::T.IApi.RetryAfter(__ex);
                 if (__attempt == _retry.MaxAttempts - 1) break;
                 await global::System.Threading.Tasks.Task.Delay(_retry.GetDelayMs(__attempt, __hint), __ct).ConfigureAwait(false);
@@ -122,7 +122,7 @@ internal sealed class IApiResilienceProxy : global::T.IApi
                     try { await __candidate.DisposeAsync().ConfigureAwait(false); }
                     catch (global::System.Exception) { /* the attempt's own exception wins */ }
                 }
-                if (!global::T.IApi.IsTransient(__ex)) break;
+                if (!global::T.IApi.IsTransient(__ex)) throw;
                 var __hint = global::T.IApi.RetryAfter(__ex);
                 if (__attempt == _retry.MaxAttempts - 1) break;
                 await global::System.Threading.Tasks.Task.Delay(_retry.GetDelayMs(__attempt, __hint), __ct).ConfigureAwait(false);

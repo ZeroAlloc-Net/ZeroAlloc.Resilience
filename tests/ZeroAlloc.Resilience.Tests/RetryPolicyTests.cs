@@ -150,4 +150,9 @@ public class RetryPolicyTests
         attribute.DelayHint.Should().BeNull();
         attribute.MaxDelayMs.Should().Be(RetryPolicy.MaxBackoffMs);
     }
+
+    // #203: a declined exception is rethrown unchanged unless RethrowDeclined = false.
+    [Fact]
+    public void RetryAttribute_RethrowDeclined_DefaultsToTrue() =>
+        new RetryAttribute().RethrowDeclined.Should().BeTrue();
 }
