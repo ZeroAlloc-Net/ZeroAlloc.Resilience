@@ -6,7 +6,7 @@ sidebar_position: 7
 
 # Migrating to 4.0
 
-4.0 has three breaking changes. Most projects need at most a package reference or a one-line attribute
+4.0 has four breaking changes. Most projects need at most a package reference or a one-line attribute
 change.
 
 ## Breaking changes
@@ -15,6 +15,7 @@ change.
 |---|---|---|---|
 | Target frameworks | `net8.0`, `net9.0`, `net10.0`, `net11.0` | `net10.0`, `net11.0` | Move the project to .NET 10 or .NET 11, or stay on 3.x. .NET 8 and .NET 9 are out of support. |
 | An exception `RetryOnException` declines, on a method that throws | wrapped in `ResilienceException(ResiliencePolicy.Retry, "All retry attempts failed.", exception)` unless `RethrowDeclined = true` | rethrown unchanged, with its original stack trace, unless `RethrowDeclined = false` | Catch the exception type itself instead of `ResilienceException` and its `InnerException`. To keep the 3.x wrapper, set `RethrowDeclined = false` on the `[Retry]`. Methods returning `Result`, `Result<T>`, `Result<T, ResilienceError>` or `UnitResult<ResilienceError>` still return a failure. A `Result<T, E>` with any other `E` throws, so it now rethrows the declined exception too: catch that type, or set `RethrowDeclined = false`. |
+| [ZR0013](../diagnostics/ZR0013.md) | reported only `RethrowDeclined = true` where it has no effect | reports a `RethrowDeclined` set to either value where it has no effect: no `RetryOnException`, or only methods that return failures | Remove `RethrowDeclined` from that `[Retry]`. A build with `TreatWarningsAsErrors` fails on the warning until you do. |
 | Package dependency on `Microsoft.Extensions.DependencyInjection.Abstractions` | declared by `ZeroAlloc.Resilience` | not declared | A project that calls the generated `Add{Name}Resilience` or `Add{Name}ResiliencePolicies` and got the abstractions only through this package runs `dotnet add package Microsoft.Extensions.DependencyInjection.Abstractions`. ASP.NET Core and generic-host apps already have it. |
 
 ## Declined exceptions
@@ -41,8 +42,8 @@ a failure. A `Result<T, E>` with any other `E`, such as `Result<Order, HttpError
 exception, so it throws: like a method returning `Order`, it now rethrows the declined exception where 3.x
 threw `ResilienceException`. See [Declined exceptions and `RethrowDeclined`](../core-concepts/retry.md#declined-exceptions-and-rethrowdeclined).
 
-[ZR0013](../diagnostics/ZR0013.md) now reports a `RethrowDeclined` set to either value where it has no
-effect. An explicit `RethrowDeclined = true` that 3.x accepted keeps compiling and keeps its meaning; it can
+As the ZR0013 row above says, [ZR0013](../diagnostics/ZR0013.md) now reports a `RethrowDeclined` set to
+either value where it has no effect. An explicit `RethrowDeclined = true` that 3.x accepted keeps compiling and keeps its meaning; it can
 be removed, since it is the default.
 
 ## The DI abstractions
