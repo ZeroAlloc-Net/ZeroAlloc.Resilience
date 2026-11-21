@@ -408,7 +408,7 @@ public sealed partial class ResilienceGenerator : IIncrementalGenerator
     // never throws.
     private static void ValidateOwnRethrowDeclined(InterfaceParse state, MethodParse method)
     {
-        if (method.OwnRetry is not { } own || !SetsRethrowDeclined(method.OwnRetryAttr)) return;
+        if (method.OwnRetry is not { } own || !SetsRethrowDeclined(method.OwnRetryAttr!)) return;
         var name = method.Member.Name;
         if (own.RetryOnException is null)
             ReportRethrowDeclinedHasNoEffect(state.Diagnostics, method.OwnRetryAttr!, method.Location, name, NoRetryOnException);
@@ -428,8 +428,7 @@ public sealed partial class ResilienceGenerator : IIncrementalGenerator
 
     // ZR0013 is about a RethrowDeclined the user wrote: the default is true, so a [Retry] that does
     // not mention it has nothing to remove.
-    private static bool SetsRethrowDeclined(AttributeData? attr) =>
-        attr is not null && IsSet(attr, "RethrowDeclined");
+    private static bool SetsRethrowDeclined(AttributeData attr) => IsSet(attr, "RethrowDeclined");
 
     private static void ReportRethrowDeclinedHasNoEffect(ImmutableArray<Diagnostic>.Builder diagnostics,
         AttributeData attr, Location? fallbackLocation, string target, (string Reason, string Advice) why) =>

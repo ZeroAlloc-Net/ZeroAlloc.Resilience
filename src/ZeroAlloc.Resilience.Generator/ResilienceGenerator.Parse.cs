@@ -70,7 +70,7 @@ public sealed partial class ResilienceGenerator
             ValidateAttributeValues(Diagnostics, RateLimitAttr, RateLimitRules, Iface.Name, IfaceLocation);
             ValidateAttributeValues(Diagnostics, CircuitBreakerAttr, CircuitBreakerRules, Iface.Name, IfaceLocation);
             ValidateRetryMemberNames(Diagnostics, RetryAttr, RetryLookup, errorTypeDisplay: null, IfaceLocation);
-            if (ClassRetry is { RetryOnException: null } && SetsRethrowDeclined(RetryAttr))
+            if (ClassRetry is { RetryOnException: null } && SetsRethrowDeclined(RetryAttr!))
                 ReportRethrowDeclinedHasNoEffect(Diagnostics, RetryAttr!, IfaceLocation, Iface.Name, NoRetryOnException);
         }
 
@@ -84,7 +84,7 @@ public sealed partial class ResilienceGenerator
         // works on the throwing methods, and the Result methods need no change.
         public void ReportUnusedInterfaceRethrowDeclined()
         {
-            if (ClassRetry is not { RetryOnException: not null } || !SetsRethrowDeclined(RetryAttr)
+            if (ClassRetry is not { RetryOnException: not null } || !SetsRethrowDeclined(RetryAttr!)
                 || ClassRetryThrowingMethods > 0 || ClassRetryFailureMethods == 0)
                 return;
             ReportRethrowDeclinedHasNoEffect(Diagnostics, RetryAttr!, IfaceLocation, Iface.Name,
