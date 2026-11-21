@@ -190,7 +190,7 @@ internal sealed record RetryConfig(
     string? RetryWhen = null,
     string? RetryOnException = null,
     string? DelayHint = null,
-    bool RethrowDeclined = false);
+    bool RethrowDeclined = true);
 internal sealed record TimeoutConfig(int TotalMs);
 internal enum RateLimitScope { Shared, Instance }
 internal sealed record RateLimitConfig(int MaxPerSecond, int BurstSize, RateLimitScope Scope);

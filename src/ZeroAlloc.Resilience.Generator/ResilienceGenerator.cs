@@ -403,11 +403,12 @@ public sealed partial class ResilienceGenerator : IIncrementalGenerator
         method.Unwrappable = UnwrappableReason(method.IsAsync || method.IsAsyncEnumerable, method.HasByRefOrRefLikeParameter, method.ReturnsByRef);
     }
 
-    // ZR0013 for the method's own [Retry(RethrowDeclined = true)], at the attribute: without
-    // RetryOnException nothing is declined, and a method that returns failures never throws.
+    // ZR0013 for a RethrowDeclined the method's own [Retry] sets, to either value, at the
+    // attribute: without RetryOnException nothing is declined, and a method that returns failures
+    // never throws.
     private static void ValidateOwnRethrowDeclined(InterfaceParse state, MethodParse method)
     {
-        if (method.OwnRetry is not { RethrowDeclined: true } own) return;
+        if (method.OwnRetry is not { } own || !SetsRethrowDeclined(method.OwnRetryAttr!)) return;
         var name = method.Member.Name;
         if (own.RetryOnException is null)
             ReportRethrowDeclinedHasNoEffect(state.Diagnostics, method.OwnRetryAttr!, method.Location, name, NoRetryOnException);
@@ -424,6 +425,10 @@ public sealed partial class ResilienceGenerator : IIncrementalGenerator
     // MethodModel.ReturnsFailureResult.
     private static bool ReturnsFailures(ResultKind kind) =>
         kind is ResultKind.StringError or ResultKind.ResilienceError;
+
+    // ZR0013 is about a RethrowDeclined the user wrote: the default is true, so a [Retry] that does
+    // not mention it has nothing to remove.
+    private static bool SetsRethrowDeclined(AttributeData attr) => IsSet(attr, "RethrowDeclined");
 
     private static void ReportRethrowDeclinedHasNoEffect(ImmutableArray<Diagnostic>.Builder diagnostics,
         AttributeData attr, Location? fallbackLocation, string target, (string Reason, string Advice) why) =>
@@ -1311,7 +1316,7 @@ public sealed partial class ResilienceGenerator : IIncrementalGenerator
             RetryWhen: GetString(attr, "RetryWhen"),
             RetryOnException: GetString(attr, "RetryOnException"),
             DelayHint: GetString(attr, "DelayHint"),
-            RethrowDeclined: GetBool(attr, "RethrowDeclined", false));
+            RethrowDeclined: GetBool(attr, "RethrowDeclined", true));
     }
 
     private static TimeoutConfig? ParseTimeout(AttributeData? attr)
@@ -1355,6 +1360,14 @@ public sealed partial class ResilienceGenerator : IIncrementalGenerator
             if (string.Equals(kv.Key, name, StringComparison.Ordinal) && kv.Value.Value is bool v)
                 return v;
         return defaultValue;
+    }
+
+    private static bool IsSet(AttributeData attr, string name)
+    {
+        foreach (var kv in attr.NamedArguments)
+            if (string.Equals(kv.Key, name, StringComparison.Ordinal))
+                return true;
+        return false;
     }
 
     private static string? GetString(AttributeData attr, string name)

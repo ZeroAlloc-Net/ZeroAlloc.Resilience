@@ -4,10 +4,10 @@ using Microsoft.CodeAnalysis;
 
 namespace ZeroAlloc.Resilience.Generator.Tests;
 
-// #195: by default an exception RetryOnException declines leaves the loop for exhaustion, as
-// documented. With RethrowDeclined, a method that throws rethrows it from the catch with `throw;`,
-// keeping the original exception and its stack. A method that returns a ResilienceError-capable
-// Result turns it into a failure either way, because such a method never throws.
+// #195, #203: by default a method that throws rethrows an exception RetryOnException declines from
+// the catch with `throw;`, keeping the original exception and its stack. RethrowDeclined = false
+// sends it through exhaustion instead. A method that returns a ResilienceError-capable Result
+// turns it into a failure either way, because such a method never throws.
 public class DeclinedExceptionTests
 {
     private const string Usings = """
@@ -77,13 +77,12 @@ public class DeclinedExceptionTests
 
     [Theory]
     [MemberData(nameof(ThrowingMethods))]
-    public void ThrowingMethod_ByDefault_DeclinedExceptionGoesThroughExhaustion(string method, string retryWhen, string policies)
+    public void ThrowingMethod_ByDefault_RethrowsTheDeclinedException(string method, string retryWhen, string policies)
     {
         var generated = Generate(method, retryWhen, policies);
 
-        generated.Should().Contain(Exhaust);
-        generated.Should().NotContain(Rethrow);
-        generated.Should().Contain("\"All retry attempts failed.\"");
+        generated.Should().Contain(Rethrow);
+        generated.Should().NotContain(Exhaust);
     }
 
     [Theory]
@@ -104,6 +103,7 @@ public class DeclinedExceptionTests
 
         generated.Should().Contain(Exhaust);
         generated.Should().NotContain(Rethrow);
+        generated.Should().Contain("\"All retry attempts failed.\"");
     }
 
     [Theory]
@@ -119,9 +119,9 @@ public class DeclinedExceptionTests
 
     [Theory]
     [MemberData(nameof(FailureResultMethods))]
-    public void FailureResultMethod_WithRethrowDeclined_StillReturnsAFailure(string method, string retryWhen)
+    public void FailureResultMethod_WithRethrowDeclinedFalse_StillReturnsAFailure(string method, string retryWhen)
     {
-        var generated = Generate(method, retryWhen + ", RethrowDeclined = true");
+        var generated = Generate(method, retryWhen + ", RethrowDeclined = false");
 
         generated.Should().Contain(Exhaust);
         generated.Should().NotContain(Rethrow);
@@ -133,12 +133,12 @@ public class DeclinedExceptionTests
     public void MethodLevelRetry_DecidesRethrowDeclined_ForItsOwnMethod()
     {
         var (compilation, errors) = TestHelper.RunAndCompile(Usings + """
-            [Retry(RetryOnException = nameof(IsRetryable), RethrowDeclined = true)]
+            [Retry(RetryOnException = nameof(IsRetryable), RethrowDeclined = false)]
             public interface IApi
             {
-                ValueTask<string> RethrowsAsync(CancellationToken ct);
-                [Retry(RetryOnException = nameof(IsRetryable))]
                 ValueTask<string> ExhaustsAsync(CancellationToken ct);
+                [Retry(RetryOnException = nameof(IsRetryable))]
+                ValueTask<string> RethrowsAsync(CancellationToken ct);
                 static bool IsRetryable(Exception exception) => true;
             }
             """);

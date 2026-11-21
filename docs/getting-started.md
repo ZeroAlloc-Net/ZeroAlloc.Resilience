@@ -12,7 +12,13 @@ sidebar_position: 2
 dotnet add package ZeroAlloc.Resilience
 ```
 
-The source generator is bundled in the package — no separate install required.
+The source generator is bundled in the package — no separate install required. The package targets .NET 10 and .NET 11.
+
+The generated `Add{Name}Resilience` registration methods need `Microsoft.Extensions.DependencyInjection.Abstractions`, which ASP.NET Core and generic-host apps already reference. In a class library, add it yourself:
+
+```bash
+dotnet add package Microsoft.Extensions.DependencyInjection.Abstractions
+```
 
 ## Annotate your interface
 

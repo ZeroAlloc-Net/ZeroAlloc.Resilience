@@ -53,10 +53,11 @@ public interface IResultAwareApi
     static TimeSpan? RetryAfter(Exception exception) => ApiRetryRules.RetryAfter(exception);
 }
 
-// #195: the same retry rules as IResultAwareApi, opting in to rethrowing a declined exception.
+// #195, #203: the same retry rules as IResultAwareApi, opting out of rethrowing a declined
+// exception, so it goes through exhaustion as before 4.0.
 [Retry(MaxAttempts = 3, BackoffMs = 1, RetryWhen = nameof(IsTransient),
-       RetryOnException = nameof(IsTransientException), RethrowDeclined = true)]
-public interface IRethrowingResultAwareApi
+       RetryOnException = nameof(IsTransientException), RethrowDeclined = false)]
+public interface IWrappingResultAwareApi
 {
     ValueTask<Result<string, ApiError>> GetAsync(CancellationToken ct);
     Result<string, ApiError> Get(CancellationToken ct);
@@ -119,7 +120,7 @@ public interface IMaxDelayApi
 // Each call asks the script for call number n: an error to fail with, null to succeed, or an
 // exception it throws.
 public sealed class ScriptedApi(Func<int, ApiError?> script)
-    : IResultAwareApi, ITimedResultAwareApi, IBreakerResultAwareApi, ICancellableTimedResultAwareApi, IRethrowingResultAwareApi
+    : IResultAwareApi, ITimedResultAwareApi, IBreakerResultAwareApi, ICancellableTimedResultAwareApi, IWrappingResultAwareApi
 {
     public int Calls { get; private set; }
 
@@ -285,30 +286,30 @@ public class ResultAwareRetryIntegrationTests
     }
 
     [Fact(Timeout = 10_000)]
-    public async Task TransientFailure_ThenADeclinedException_ThrowsResilienceException()
+    public async Task WithRethrowDeclinedFalse_TransientFailure_ThenADeclinedException_ThrowsResilienceException()
     {
         var inner = new ScriptedApi(static call =>
             call == 1 ? new ApiError(429, RetryAfterMs: 0) : throw new ArgumentException("permanent", nameof(call)));
 
-        var act = async () => await Proxy(inner).GetAsync(CancellationToken.None);
+        var act = async () => await WrappingProxy(inner).GetAsync(CancellationToken.None);
 
         (await act.Should().ThrowAsync<ResilienceException>()).WithInnerException<ArgumentException>();
         inner.Calls.Should().Be(2);
     }
 
     [Fact]
-    public async Task RetryOnExceptionFalse_StopsRetrying()
+    public async Task WithRethrowDeclinedFalse_RetryOnExceptionFalse_StopsRetrying()
     {
         var inner = new ScriptedApi(static call => throw new ArgumentException("permanent", nameof(call)));
 
-        var act = async () => await Proxy(inner).GetAsync(CancellationToken.None);
+        var act = async () => await WrappingProxy(inner).GetAsync(CancellationToken.None);
 
         (await act.Should().ThrowAsync<ResilienceException>()).WithInnerException<ArgumentException>();
         inner.Calls.Should().Be(1);
     }
 
-    private static IRethrowingResultAwareApi RethrowingProxy(ScriptedApi inner) =>
-        new IRethrowingResultAwareApiResilienceProxy(inner, new RethrowingResultAwareApiResiliencePolicies());
+    private static IWrappingResultAwareApi WrappingProxy(ScriptedApi inner) =>
+        new IWrappingResultAwareApiResilienceProxy(inner, new WrappingResultAwareApiResiliencePolicies());
 
     [Fact]
     public async Task RethrowDeclined_TransientFailure_ThenADeclinedException_RethrowsItUnwrapped()
@@ -316,7 +317,7 @@ public class ResultAwareRetryIntegrationTests
         var inner = new ScriptedApi(static call =>
             call == 1 ? new ApiError(429) : throw new ArgumentException("permanent", nameof(call)));
 
-        var act = async () => await RethrowingProxy(inner).GetAsync(CancellationToken.None);
+        var act = async () => await Proxy(inner).GetAsync(CancellationToken.None);
 
         await act.Should().ThrowExactlyAsync<ArgumentException>().WithMessage("permanent*");
         inner.Calls.Should().Be(2);
@@ -327,7 +328,7 @@ public class ResultAwareRetryIntegrationTests
     {
         var inner = new ScriptedApi(static call => throw new ArgumentException("permanent", nameof(call)));
 
-        var act = () => RethrowingProxy(inner).Get(CancellationToken.None);
+        var act = () => Proxy(inner).Get(CancellationToken.None);
 
         act.Should().ThrowExactly<ArgumentException>().WithMessage("permanent*");
         inner.Calls.Should().Be(1);
@@ -338,7 +339,7 @@ public class ResultAwareRetryIntegrationTests
     {
         var inner = new ScriptedApi(static call => throw new InvalidOperationException("transient"));
 
-        var act = async () => await RethrowingProxy(inner).GetAsync(CancellationToken.None);
+        var act = async () => await Proxy(inner).GetAsync(CancellationToken.None);
 
         (await act.Should().ThrowExactlyAsync<ResilienceException>()).WithInnerException<InvalidOperationException>();
         inner.Calls.Should().Be(3);

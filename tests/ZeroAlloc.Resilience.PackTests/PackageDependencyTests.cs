@@ -1,47 +1,34 @@
 using System;
 using System.IO;
 using System.Linq;
-using System.Reflection;
-using System.Xml.Linq;
 
 namespace ZeroAlloc.Resilience.PackTests;
 
-// #197: every PackageReference of the package project that is not PrivateAssets="all" becomes a
-// dependency in the packed nuspec, so each one must be something a consumer needs: either the
-// runtime assembly references it, or the code the generator emits into the consumer does.
-public class PackageDependencyTests
+// #197: every dependency the packed nuspec declares is restored and deployed by every consumer,
+// so each one must be something a consumer needs: either the runtime assembly references it, or
+// the code the generator emits into the consumer does. The tests read the nuspec of a real pack,
+// so a dependency that reaches the package through an imported .props file or a ProjectReference
+// counts too, not only the PackageReferences written in the csproj.
+public class PackageDependencyTests : IClassFixture<PackedPackage>
 {
-    // The generated proxies and DI extensions use these; the runtime assembly itself does not.
+    // The generated proxies use these; the runtime assembly itself does not.
     private static readonly string[] GeneratedCodeDependencies =
     [
-        // The generated Add{Service}Resilience extensions.
-        "Microsoft.Extensions.DependencyInjection.Abstractions",
         // The Result return types the generated proxies build failures of.
         "ZeroAlloc.Results",
     ];
 
-    private static string PackageProjectPath() =>
-        typeof(PackageDependencyTests).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
-            .First(static a => string.Equals(a.Key, "PackageProject", StringComparison.Ordinal))
-            .Value!;
+    private readonly PackedPackage _package;
 
-    // The PackageReferences that flow into the nuspec: every one not marked PrivateAssets="all".
-    private static string[] ShippedPackageReferences()
-    {
-        var project = XDocument.Load(PackageProjectPath());
-        return project.Descendants("PackageReference")
-            .Where(static reference =>
-            {
-                var privateAssets = (string?)reference.Attribute("PrivateAssets") ?? (string?)reference.Element("PrivateAssets");
-                return !string.Equals(privateAssets?.Trim(), "all", StringComparison.OrdinalIgnoreCase);
-            })
-            .Select(static reference => (string)reference.Attribute("Include")!)
-            .ToArray();
-    }
+    public PackageDependencyTests(PackedPackage package) => _package = package;
 
     [Fact]
     public void PackageProject_IsFound() =>
-        File.Exists(PackageProjectPath()).Should().BeTrue();
+        File.Exists(PackedPackage.PackageProjectPath()).Should().BeTrue();
+
+    [Fact]
+    public void Nuspec_HasADependencyGroupPerTargetFramework() =>
+        _package.DependencyGroupFrameworks().Should().Equal("net10.0", "net11.0");
 
     [Fact]
     public void EveryShippedDependency_IsUsedByTheRuntimeOrTheGeneratedCode()
@@ -50,17 +37,25 @@ public class PackageDependencyTests
             .Select(static name => name.Name!)
             .ToHashSet(StringComparer.Ordinal);
 
-        var unused = ShippedPackageReferences()
+        var unused = _package.DependencyIds()
             .Where(id => !runtimeReferences.Contains(id) && !GeneratedCodeDependencies.Contains(id, StringComparer.Ordinal))
             .ToArray();
 
         unused.Should().BeEmpty("a package dependency nothing uses is restored and deployed by every consumer for nothing, and these are unused: {0}", string.Join(", ", unused));
     }
 
+    // #205: the generated Add{Service}Resilience extensions are emitted only when the consumer
+    // references IServiceCollection itself, so the package must not bring the abstractions into
+    // every consumer's dependency graph, including those that construct the proxies by hand.
+    [Fact]
+    public void DependencyInjectionAbstractions_IsNotAShippedDependency() =>
+        _package.DependencyIds().Should().NotContain(
+            static id => id.StartsWith("Microsoft.Extensions.DependencyInjection", StringComparison.Ordinal));
+
     [Fact]
     public void RuntimeAssemblyReferences_AreAllShippedDependencies()
     {
-        var shipped = ShippedPackageReferences().ToHashSet(StringComparer.Ordinal);
+        var shipped = _package.DependencyIds().ToHashSet(StringComparer.Ordinal);
 
         var zeroAllocReferences = typeof(RetryPolicy).Assembly.GetReferencedAssemblies()
             .Select(static name => name.Name!)

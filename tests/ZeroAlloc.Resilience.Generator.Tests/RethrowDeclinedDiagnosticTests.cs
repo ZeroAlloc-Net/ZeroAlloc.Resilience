@@ -5,9 +5,10 @@ using Microsoft.CodeAnalysis;
 
 namespace ZeroAlloc.Resilience.Generator.Tests;
 
-// #195: ZR0013 warns when [Retry(RethrowDeclined = true)] can have no effect: the [Retry] has no
+// #195: ZR0013 warns when a RethrowDeclined set on a [Retry] can have no effect: the [Retry] has no
 // RetryOnException, so nothing is ever declined, or every method it applies to returns a Result
-// whose failure the proxy builds, so nothing is ever thrown.
+// whose failure the proxy builds, so nothing is ever thrown. #203 made true the default, so the
+// warning is about a RethrowDeclined the user wrote, to either value.
 public class RethrowDeclinedDiagnosticTests
 {
     private const string Usings = """
@@ -37,11 +38,13 @@ public class RethrowDeclinedDiagnosticTests
 
     // ── Positive: no RetryOnException ──────────────────────────────────────────
 
-    [Fact]
-    public void InterfaceLevel_WithoutRetryOnException_ReportsZR0013AtTheAttribute()
+    [Theory]
+    [InlineData("true")]
+    [InlineData("false")]
+    public void InterfaceLevel_WithoutRetryOnException_ReportsZR0013AtTheAttribute(string value)
     {
-        var source = Usings + """
-            [Retry(RethrowDeclined = true)]
+        var source = Usings + $$"""
+            [Retry(RethrowDeclined = {{value}})]
             public interface IApi
             {
                 ValueTask<string> GetAsync(CancellationToken ct);
@@ -51,18 +54,20 @@ public class RethrowDeclinedDiagnosticTests
         var diagnostic = Zr0013(source).Should().ContainSingle().Subject;
         diagnostic.Severity.Should().Be(DiagnosticSeverity.Warning);
         diagnostic.GetMessage(CultureInfo.InvariantCulture).Should()
-            .Be("[Retry] RethrowDeclined = true has no effect on 'IApi', because the [Retry] has no RetryOnException, so no exception is ever declined. Set RetryOnException, or remove RethrowDeclined.");
+            .Be("[Retry] RethrowDeclined has no effect on 'IApi', because the [Retry] has no RetryOnException, so no exception is ever declined. Set RetryOnException, or remove RethrowDeclined.");
         SourceAt(source, diagnostic).Should().StartWith("Retry(");
         ShouldCompileWithoutErrors(source);
     }
 
-    [Fact]
-    public void MethodLevel_WithoutRetryOnException_ReportsZR0013AtTheAttribute()
+    [Theory]
+    [InlineData("true")]
+    [InlineData("false")]
+    public void MethodLevel_WithoutRetryOnException_ReportsZR0013AtTheAttribute(string value)
     {
-        var source = Usings + """
+        var source = Usings + $$"""
             public interface IApi
             {
-                [Retry(RethrowDeclined = true)]
+                [Retry(RethrowDeclined = {{value}})]
                 ValueTask<string> GetAsync(CancellationToken ct);
             }
             """;
@@ -78,16 +83,17 @@ public class RethrowDeclinedDiagnosticTests
     // ── Positive: only methods that never throw ────────────────────────────────
 
     [Theory]
-    [InlineData("ValueTask<Result<string, ResilienceError>> GetAsync(CancellationToken ct);")]
-    [InlineData("ValueTask<UnitResult<ResilienceError>> GetAsync(CancellationToken ct);")]
-    [InlineData("ValueTask<Result<string>> GetAsync(CancellationToken ct);")]
-    [InlineData("Result GetResult(CancellationToken ct);")]
-    public void MethodLevel_OnAMethodThatReturnsFailures_ReportsZR0013(string method)
+    [InlineData("ValueTask<Result<string, ResilienceError>> GetAsync(CancellationToken ct);", "true")]
+    [InlineData("ValueTask<UnitResult<ResilienceError>> GetAsync(CancellationToken ct);", "true")]
+    [InlineData("ValueTask<Result<string>> GetAsync(CancellationToken ct);", "true")]
+    [InlineData("Result GetResult(CancellationToken ct);", "true")]
+    [InlineData("ValueTask<Result<string, ResilienceError>> GetAsync(CancellationToken ct);", "false")]
+    public void MethodLevel_OnAMethodThatReturnsFailures_ReportsZR0013(string method, string value)
     {
         var source = Usings + $$"""
             public interface IApi
             {
-                [Retry(RetryOnException = nameof(IsRetryable), RethrowDeclined = true)]
+                [Retry(RetryOnException = nameof(IsRetryable), RethrowDeclined = {{value}})]
                 {{method}}
                 static bool IsRetryable(Exception exception) => true;
             }
@@ -102,11 +108,13 @@ public class RethrowDeclinedDiagnosticTests
         ShouldCompileWithoutErrors(source);
     }
 
-    [Fact]
-    public void InterfaceLevel_WhenEveryMethodReturnsFailures_ReportsZR0013Once()
+    [Theory]
+    [InlineData("true")]
+    [InlineData("false")]
+    public void InterfaceLevel_WhenEveryMethodReturnsFailures_ReportsZR0013Once(string value)
     {
-        var source = Usings + """
-            [Retry(RetryOnException = nameof(IsRetryable), RethrowDeclined = true)]
+        var source = Usings + $$"""
+            [Retry(RetryOnException = nameof(IsRetryable), RethrowDeclined = {{value}})]
             public interface IApi
             {
                 ValueTask<Result<string, ResilienceError>> GetAsync(CancellationToken ct);
@@ -144,16 +152,21 @@ public class RethrowDeclinedDiagnosticTests
 
     // ── Negative ───────────────────────────────────────────────────────────────
 
+    // RethrowDeclined = false is the opt-out back to the 3.x wrapper, so it has an effect here too.
     [Theory]
-    [InlineData("ValueTask<string> GetAsync(CancellationToken ct);")]
-    [InlineData("string Get(CancellationToken ct);")]
-    [InlineData("Task SendAsync(CancellationToken ct);")]
+    [InlineData("ValueTask<string> GetAsync(CancellationToken ct);", "true")]
+    [InlineData("ValueTask<string> GetAsync(CancellationToken ct);", "false")]
+    [InlineData("string Get(CancellationToken ct);", "true")]
+    [InlineData("string Get(CancellationToken ct);", "false")]
+    [InlineData("Task SendAsync(CancellationToken ct);", "true")]
+    [InlineData("Task SendAsync(CancellationToken ct);", "false")]
     // A foreign error type cannot hold the exception, so the method throws it.
-    [InlineData("ValueTask<Result<string, HttpError>> GetAsync(CancellationToken ct);")]
-    public void WithRetryOnException_OnAMethodThatThrows_ReportsNothing(string method)
+    [InlineData("ValueTask<Result<string, HttpError>> GetAsync(CancellationToken ct);", "true")]
+    [InlineData("ValueTask<Result<string, HttpError>> GetAsync(CancellationToken ct);", "false")]
+    public void WithRetryOnException_OnAMethodThatThrows_ReportsNothing(string method, string value)
     {
         var interfaceLevel = Usings + $$"""
-            [Retry(RetryOnException = nameof(IsRetryable), RethrowDeclined = true)]
+            [Retry(RetryOnException = nameof(IsRetryable), RethrowDeclined = {{value}})]
             public interface IApi
             {
                 {{method}}
@@ -163,7 +176,7 @@ public class RethrowDeclinedDiagnosticTests
         var methodLevel = Usings + $$"""
             public interface IApi
             {
-                [Retry(RetryOnException = nameof(IsRetryable), RethrowDeclined = true)]
+                [Retry(RetryOnException = nameof(IsRetryable), RethrowDeclined = {{value}})]
                 {{method}}
                 static bool IsRetryable(Exception exception) => true;
             }
@@ -176,11 +189,13 @@ public class RethrowDeclinedDiagnosticTests
     // An interface-level [Retry] over a mix of methods has an effect on the throwing ones. Its
     // Result methods are not reported: they need no change, and the warning could only be
     // silenced by moving the [Retry] onto every throwing method.
-    [Fact]
-    public void InterfaceLevel_OverAMixOfMethods_ReportsNothing()
+    [Theory]
+    [InlineData("true")]
+    [InlineData("false")]
+    public void InterfaceLevel_OverAMixOfMethods_ReportsNothing(string value)
     {
-        var source = Usings + """
-            [Retry(RetryOnException = nameof(IsRetryable), RethrowDeclined = true)]
+        var source = Usings + $$"""
+            [Retry(RetryOnException = nameof(IsRetryable), RethrowDeclined = {{value}})]
             public interface IApi
             {
                 ValueTask<string> GetAsync(CancellationToken ct);
@@ -192,19 +207,22 @@ public class RethrowDeclinedDiagnosticTests
         Zr0013(source).Should().BeEmpty();
     }
 
-    [Theory]
-    [InlineData("")]
-    [InlineData(", RethrowDeclined = false")]
-    public void WithoutRethrowDeclined_ReportsNothing(string rethrow)
+    // The default is true, so a [Retry] that does not set RethrowDeclined has nothing to remove,
+    // with or without RetryOnException, on methods that throw and methods that return failures.
+    [Fact]
+    public void WithoutRethrowDeclined_ReportsNothing()
     {
-        var source = Usings + $$"""
-            [Retry(MaxAttempts = 2{{rethrow}})]
+        var source = Usings + """
+            [Retry(MaxAttempts = 2)]
             public interface IApi
             {
                 ValueTask<string> GetAsync(CancellationToken ct);
                 ValueTask<Result<string, ResilienceError>> TryGetAsync(CancellationToken ct);
-                [Retry(MaxAttempts = 2{{rethrow}})]
+                [Retry(MaxAttempts = 2)]
                 ValueTask<Result<string>> FindAsync(CancellationToken ct);
+                [Retry(RetryOnException = nameof(IsRetryable))]
+                ValueTask<Result<string, ResilienceError>> SendAsync(CancellationToken ct);
+                static bool IsRetryable(Exception exception) => true;
             }
             """;
 
@@ -213,14 +231,16 @@ public class RethrowDeclinedDiagnosticTests
 
     // An interface whose methods all have their own [Retry] applies its own to none of them;
     // that is not what ZR0013 is about.
-    [Fact]
-    public void InterfaceLevel_ShadowedOnEveryMethod_ReportsNothing()
+    [Theory]
+    [InlineData("true")]
+    [InlineData("false")]
+    public void InterfaceLevel_ShadowedOnEveryMethod_ReportsNothing(string value)
     {
-        var source = Usings + """
-            [Retry(RetryOnException = nameof(IsRetryable), RethrowDeclined = true)]
+        var source = Usings + $$"""
+            [Retry(RetryOnException = nameof(IsRetryable), RethrowDeclined = {{value}})]
             public interface IApi
             {
-                [Retry(RetryOnException = nameof(IsRetryable), RethrowDeclined = true)]
+                [Retry(RetryOnException = nameof(IsRetryable), RethrowDeclined = {{value}})]
                 ValueTask<string> GetAsync(CancellationToken ct);
                 static bool IsRetryable(Exception exception) => true;
             }

@@ -57,6 +57,7 @@ services.AddExternalServiceResilience<ExternalServiceImpl>();
 | [Method-Level Overrides](guides/method-level-overrides.md) | Per-method policy configuration |
 | [Result Return Types](guides/result-return-types.md) | Non-throwing failure path with `Result`, `Result<T>` and `Result<T, E>` |
 | [DI Registration](guides/di-registration.md) | Generated extension method, overrides, manual construction |
+| [Migrating to 4.0](guides/migrating-to-v4.md) | .NET 10 and 11 only, declined exceptions rethrown, no DI abstractions dependency |
 
 ### Diagnostics
 
