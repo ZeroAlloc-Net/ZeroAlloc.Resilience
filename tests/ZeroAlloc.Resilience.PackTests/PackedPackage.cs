@@ -34,21 +34,31 @@ public sealed class PackedPackage : IDisposable
         _workDir = Path.Combine(Path.GetTempPath(), $"za-resilience-packtests-{Guid.NewGuid():N}");
         var output = Path.Combine(_workDir, "feed");
         var artifacts = Path.Combine(_workDir, "artifacts");
-        Directory.CreateDirectory(output);
+        // The constructor returns no fixture to dispose when it throws, so remove the work
+        // directory here and rethrow.
+        try
+        {
+            Directory.CreateDirectory(output);
 
-        var project = PackageProjectPath();
-        var (exitCode, log) = RunDotnet(
-            $"pack \"{project}\" -c Release -p:Version={version} --artifacts-path \"{artifacts}\" -o \"{output}\" --disable-build-servers",
-            Path.GetDirectoryName(project)!);
-        if (exitCode != 0)
-            throw new InvalidOperationException($"Packing {project} failed.{Environment.NewLine}{log}");
+            var project = PackageProjectPath();
+            var (exitCode, log) = RunDotnet(
+                $"pack \"{project}\" -c Release -p:Version={version} --artifacts-path \"{artifacts}\" -o \"{output}\" --disable-build-servers",
+                Path.GetDirectoryName(project)!);
+            if (exitCode != 0)
+                throw new InvalidOperationException($"Packing {project} failed.{Environment.NewLine}{log}");
 
-        var nupkg = Path.Combine(output, $"{PackageId}.{version}.nupkg");
-        using var archive = ZipFile.OpenRead(nupkg);
-        var entry = archive.GetEntry(PackageId + ".nuspec")
-            ?? throw new InvalidOperationException($"{PackageId}.nuspec not found inside {nupkg}.");
-        using var stream = entry.Open();
-        Nuspec = XDocument.Load(stream);
+            var nupkg = Path.Combine(output, $"{PackageId}.{version}.nupkg");
+            using var archive = ZipFile.OpenRead(nupkg);
+            var entry = archive.GetEntry(PackageId + ".nuspec")
+                ?? throw new InvalidOperationException($"{PackageId}.nuspec not found inside {nupkg}.");
+            using var stream = entry.Open();
+            Nuspec = XDocument.Load(stream);
+        }
+        catch
+        {
+            Cleanup();
+            throw;
+        }
     }
 
     /// <summary>The nuspec of the packed package.</summary>
@@ -80,7 +90,9 @@ public sealed class PackedPackage : IDisposable
             .First(static a => string.Equals(a.Key, "PackageProject", StringComparison.Ordinal))
             .Value!);
 
-    public void Dispose()
+    public void Dispose() => Cleanup();
+
+    private void Cleanup()
     {
         try { Directory.Delete(_workDir, recursive: true); }
         catch (IOException ex) { Debug.WriteLine($"Cleanup of {_workDir} failed: {ex}"); }
