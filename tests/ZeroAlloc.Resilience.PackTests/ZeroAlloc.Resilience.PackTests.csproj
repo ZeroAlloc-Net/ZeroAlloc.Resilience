@@ -23,7 +23,7 @@
                       ReferenceOutputAssembly="true" />
   </ItemGroup>
   <ItemGroup>
-    <!-- PackageDependencyTests reads the package project to check what the nuspec will declare. -->
+    <!-- PackedPackage packs this project and PackageDependencyTests reads the nuspec it produces. -->
     <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
       <_Parameter1>PackageProject</_Parameter1>
       <_Parameter2>$(MSBuildThisFileDirectory)../../src/ZeroAlloc.Resilience/ZeroAlloc.Resilience.csproj</_Parameter2>
