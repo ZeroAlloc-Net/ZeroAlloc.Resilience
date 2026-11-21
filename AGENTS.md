@@ -3,7 +3,9 @@
 Source-generated resilience for .NET: `[Retry]`, `[Timeout]`, `[RateLimit]` and `[CircuitBreaker]` on an
 interface compile into a proxy plus a DI extension, with no allocation on the happy path unless a timeout
 is configured (`[Timeout]` or `[Retry(PerAttemptTimeoutMs = ...)]`). Consumers install
-one NuGet package, `ZeroAlloc.Resilience`; the generator ships inside it.
+one NuGet package, `ZeroAlloc.Resilience`; the generator ships inside it. The generated DI extension
+appears only when the consumer also references `Microsoft.Extensions.DependencyInjection.Abstractions`,
+which the package does not bring.
 
 ## Layout
 

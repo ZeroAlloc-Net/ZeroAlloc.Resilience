@@ -20,9 +20,10 @@ Retry, timeout, rate limiting and circuit breaking for .NET, declared as attribu
 
 ```bash
 dotnet add package ZeroAlloc.Resilience
+dotnet add package Microsoft.Extensions.DependencyInjection
 ```
 
-Targets .NET 10 and .NET 11. The generated `Add{Name}Resilience` registration methods appear when the project references `Microsoft.Extensions.DependencyInjection.Abstractions`, which ASP.NET Core and generic-host apps already do; the package does not bring it.
+Targets .NET 10 and .NET 11. The generated `Add{Name}Resilience` registration methods appear when the project references `Microsoft.Extensions.DependencyInjection.Abstractions`, which ASP.NET Core and generic-host apps already do; the package does not bring it. The second command adds the container the quick start below uses, and the abstractions with it.
 
 ## Quick start
 

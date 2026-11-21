@@ -29,7 +29,7 @@ public interface IExternalService
 | `NonThrowing` | `bool` | `false` | Asserts the method returns `Result<T, ResilienceError>` or `UnitResult<ResilienceError>` |
 | `RetryWhen` | `string?` | `null` | A static `bool M(E error)`: which failed Results to retry. See [Retrying failed Results](#retrying-failed-results) |
 | `RetryOnException` | `string?` | `null` | A static `bool M(Exception exception)`: which exceptions to retry |
-| `RethrowDeclined` | `bool` | `true` | Rethrow an exception `RetryOnException` declines unchanged; `false` wraps it in `ResilienceException`. See [Declined exceptions](#declined-exceptions-and-rethrowdeclined) |
+| `RethrowDeclined` | `bool` | `true` | Rethrow an exception `RetryOnException` declines unchanged; `false` wraps it in `ResilienceException`. Result methods return a failure either way. See [Declined exceptions](#declined-exceptions-and-rethrowdeclined) |
 | `DelayHint` | `string?` | `null` | A static `TimeSpan? M(E error)` and/or `TimeSpan? M(Exception exception)`: the wait before the next attempt. See [Delay hints](#delay-hints-and-maxdelayms) |
 | `MaxDelayMs` | `int` | `RetryPolicy.MaxBackoffMs`, no cap | The longest wait between attempts, for the backoff and a hint alike |
 
