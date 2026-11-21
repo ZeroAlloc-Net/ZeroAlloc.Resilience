@@ -70,7 +70,7 @@ public sealed partial class ResilienceGenerator
             ValidateAttributeValues(Diagnostics, RateLimitAttr, RateLimitRules, Iface.Name, IfaceLocation);
             ValidateAttributeValues(Diagnostics, CircuitBreakerAttr, CircuitBreakerRules, Iface.Name, IfaceLocation);
             ValidateRetryMemberNames(Diagnostics, RetryAttr, RetryLookup, errorTypeDisplay: null, IfaceLocation);
-            if (ClassRetry is { RethrowDeclined: true, RetryOnException: null })
+            if (ClassRetry is { RetryOnException: null } && SetsRethrowDeclined(RetryAttr!))
                 ReportRethrowDeclinedHasNoEffect(Diagnostics, RetryAttr!, IfaceLocation, Iface.Name, NoRetryOnException);
         }
 
@@ -79,12 +79,12 @@ public sealed partial class ResilienceGenerator
         public int ClassRetryThrowingMethods { get; set; }
         public int ClassRetryFailureMethods { get; set; }
 
-        // ZR0013 for an interface-level [Retry(RethrowDeclined = true)] whose methods all return
-        // failures instead of throwing. A mix is not reported: the property works on the throwing
-        // methods, and the Result methods need no change.
+        // ZR0013 for an interface-level [Retry] that sets RethrowDeclined, to either value, when
+        // its methods all return failures instead of throwing. A mix is not reported: the property
+        // works on the throwing methods, and the Result methods need no change.
         public void ReportUnusedInterfaceRethrowDeclined()
         {
-            if (ClassRetry is not { RethrowDeclined: true, RetryOnException: not null }
+            if (ClassRetry is not { RetryOnException: not null } || !SetsRethrowDeclined(RetryAttr!)
                 || ClassRetryThrowingMethods > 0 || ClassRetryFailureMethods == 0)
                 return;
             ReportRethrowDeclinedHasNoEffect(Diagnostics, RetryAttr!, IfaceLocation, Iface.Name,

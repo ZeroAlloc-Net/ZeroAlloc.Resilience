@@ -20,7 +20,10 @@ Retry, timeout, rate limiting and circuit breaking for .NET, declared as attribu
 
 ```bash
 dotnet add package ZeroAlloc.Resilience
+dotnet add package Microsoft.Extensions.DependencyInjection
 ```
+
+Targets .NET 10 and .NET 11. The generated `Add{Name}Resilience` registration methods appear when the project references `Microsoft.Extensions.DependencyInjection.Abstractions`, which ASP.NET Core and generic-host apps already do; the package does not bring it. The second command adds the container the quick start below uses, and the abstractions with it.
 
 ## Quick start
 
@@ -84,7 +87,7 @@ With all policies stacked, the 144 B is the linked `CancellationTokenSource` and
 ## Learn more
 
 - Documentation: [resilience.zeroalloc.net](https://resilience.zeroalloc.net)
-- [Getting started](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/getting-started.md), [execution order](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/core-concepts/execution-order.md), [Result return types](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/guides/result-return-types.md) and [migrating to 3.0](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/guides/migrating-to-v3.md)
+- [Getting started](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/getting-started.md), [execution order](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/core-concepts/execution-order.md), [Result return types](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/guides/result-return-types.md) and [migrating to 4.0](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/docs/guides/migrating-to-v4.md)
 - Related packages: [ZeroAlloc.Rest](https://github.com/ZeroAlloc-Net/ZeroAlloc.Rest) for source-generated HTTP clients, [ZeroAlloc.Cache](https://github.com/ZeroAlloc-Net/ZeroAlloc.Cache) for caching proxies, [ZeroAlloc.Telemetry](https://github.com/ZeroAlloc-Net/ZeroAlloc.Telemetry) for tracing and metrics proxies
 - Contributing: issues and pull requests are welcome on [GitHub](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues)
 - License: [MIT](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/blob/main/LICENSE)

@@ -6,9 +6,9 @@ using ZeroAlloc.Results;
 
 namespace ZeroAlloc.Resilience.Tests;
 
-// #195: with RethrowDeclined, an exception RetryOnException declines was never retried, so it is
+// #195, #203: by default an exception RetryOnException declines was never retried, so it is
 // rethrown unchanged: the original instance with its original stack, not a ResilienceException
-// saying every retry attempt failed. Without it, the documented exhaustion still applies. An
+// saying every retry attempt failed. RethrowDeclined = false opts back into the exhaustion. An
 // exception that is retried until the attempts run out is wrapped either way.
 
 public static class DeclineRules
@@ -17,7 +17,7 @@ public static class DeclineRules
     public static bool IsRetryable(Exception exception) => exception is not ArgumentException;
 }
 
-[Retry(MaxAttempts = 3, BackoffMs = 1, RetryOnException = nameof(IsRetryable), RethrowDeclined = true)]
+[Retry(MaxAttempts = 3, BackoffMs = 1, RetryOnException = nameof(IsRetryable))]
 public interface IDeclineApi
 {
     ValueTask<string> GetAsync(CancellationToken ct);
@@ -28,7 +28,7 @@ public interface IDeclineApi
     static bool IsRetryable(Exception exception) => DeclineRules.IsRetryable(exception);
 }
 
-[Retry(MaxAttempts = 3, BackoffMs = 1, RetryOnException = nameof(IsRetryable), RethrowDeclined = true)]
+[Retry(MaxAttempts = 3, BackoffMs = 1, RetryOnException = nameof(IsRetryable))]
 [CircuitBreaker(MaxFailures = 10, ResetMs = 60_000)]
 [Timeout(Ms = 60_000)]
 public interface IGuardedDeclineApi
@@ -39,9 +39,9 @@ public interface IGuardedDeclineApi
     static bool IsRetryable(Exception exception) => DeclineRules.IsRetryable(exception);
 }
 
-// The default: a declined exception goes through exhaustion.
-[Retry(MaxAttempts = 3, BackoffMs = 1, RetryOnException = nameof(IsRetryable))]
-public interface IDefaultDeclineApi
+// The opt-out: a declined exception goes through exhaustion, as before 4.0.
+[Retry(MaxAttempts = 3, BackoffMs = 1, RetryOnException = nameof(IsRetryable), RethrowDeclined = false)]
+public interface IWrapDeclineApi
 {
     ValueTask<string> GetAsync(CancellationToken ct);
     string Get(CancellationToken ct);
@@ -50,7 +50,7 @@ public interface IDefaultDeclineApi
 }
 
 // Each call throws the exception the factory builds for call number n, or succeeds on null.
-public sealed class ThrowingApi(Func<int, Exception?> script) : IDeclineApi, IGuardedDeclineApi, IDefaultDeclineApi
+public sealed class ThrowingApi(Func<int, Exception?> script) : IDeclineApi, IGuardedDeclineApi, IWrapDeclineApi
 {
     public int Calls { get; private set; }
 
@@ -218,10 +218,10 @@ public class DeclinedExceptionIntegrationTests
     }
 
     [Fact]
-    public async Task DeclinedException_ByDefault_Async_IsWrappedByExhaustion()
+    public async Task DeclinedException_WithRethrowDeclinedFalse_Async_IsWrappedByExhaustion()
     {
         var inner = new ThrowingApi(Permanent);
-        IDefaultDeclineApi proxy = new IDefaultDeclineApiResilienceProxy(inner, new DefaultDeclineApiResiliencePolicies());
+        IWrapDeclineApi proxy = new IWrapDeclineApiResilienceProxy(inner, new WrapDeclineApiResiliencePolicies());
 
         var act = async () => await proxy.GetAsync(CancellationToken.None);
 
@@ -232,10 +232,10 @@ public class DeclinedExceptionIntegrationTests
     }
 
     [Fact]
-    public void DeclinedException_ByDefault_Sync_IsWrappedByExhaustion()
+    public void DeclinedException_WithRethrowDeclinedFalse_Sync_IsWrappedByExhaustion()
     {
         var inner = new ThrowingApi(Permanent);
-        IDefaultDeclineApi proxy = new IDefaultDeclineApiResilienceProxy(inner, new DefaultDeclineApiResiliencePolicies());
+        IWrapDeclineApi proxy = new IWrapDeclineApiResilienceProxy(inner, new WrapDeclineApiResiliencePolicies());
 
         var act = () => proxy.Get(CancellationToken.None);
 

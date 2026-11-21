@@ -444,10 +444,10 @@ internal static class ResilienceWriter
         WriteRetryExhaustion(sb, method, hasTotalTimeout);
     }
 
-    // By default a declined exception leaves the loop through exhaustion, as documented since
-    // RetryOnException shipped. With RethrowDeclined, a method that throws rethrows it from the
-    // catch with `throw;` instead: it was never retried, so it reaches the caller as the original
+    // By default, RethrowDeclined = true, a method that throws rethrows a declined exception from
+    // the catch with `throw;`: it was never retried, so it reaches the caller as the original
     // exception with its original stack, not a ResilienceException saying every attempt failed.
+    // RethrowDeclined = false sends it through exhaustion instead, the behaviour before 4.0.
     // A method that returns failures instead of throwing always leaves the loop and turns it into
     // a failure, as it does any exception. The check runs after the breaker's OnFailure, so a
     // declined exception counts as a breaker failure either way.
@@ -466,10 +466,10 @@ internal static class ResilienceWriter
         ?? (method.HasCancellationToken ? method.ArgumentListWithToken : method.ArgumentList);
 
     // Every attempt threw, the total timeout ended the retries after an exception, or
-    // RetryOnException declined the last exception without RethrowDeclined in effect. When the
-    // total timeout fired, the error names it: PolicyType Timeout, with the last attempt's
-    // exception kept as the inner exception. The check is made here, after the loop, because the
-    // loop leaves through the same break whichever way it ended.
+    // RetryOnException declined the last exception with RethrowDeclined = false, or on a method
+    // that returns failures. When the total timeout fired, the error names it: PolicyType Timeout,
+    // with the last attempt's exception kept as the inner exception. The check is made here, after
+    // the loop, because the loop leaves through the same break whichever way it ended.
     private static void WriteRetryExhaustion(StringBuilder sb, MethodModel method, bool hasTotalTimeout)
     {
         const string timedOut = "__totalCts.IsCancellationRequested";

@@ -3,11 +3,13 @@
 Source-generated resilience for .NET: `[Retry]`, `[Timeout]`, `[RateLimit]` and `[CircuitBreaker]` on an
 interface compile into a proxy plus a DI extension, with no allocation on the happy path unless a timeout
 is configured (`[Timeout]` or `[Retry(PerAttemptTimeoutMs = ...)]`). Consumers install
-one NuGet package, `ZeroAlloc.Resilience`; the generator ships inside it.
+one NuGet package, `ZeroAlloc.Resilience`; the generator ships inside it. The generated DI extension
+appears only when the consumer also references `Microsoft.Extensions.DependencyInjection.Abstractions`,
+which the package does not bring.
 
 ## Layout
 
-- `src/ZeroAlloc.Resilience` is the only package. It targets `net8.0;net9.0;net10.0;net11.0` and bundles the
+- `src/ZeroAlloc.Resilience` is the only package. It targets `net10.0;net11.0` and bundles the
   generator DLL under `analyzers/dotnet/cs` through the `IncludeGeneratorInPackage` target.
 - `src/ZeroAlloc.Resilience.Generator` targets `netstandard2.0` and is not packable on its own
   (`IsPackable=false`). Never publish it as a separate package.
@@ -24,8 +26,7 @@ one NuGet package, `ZeroAlloc.Resilience`; the generator ships inside it.
 ## Build and test
 
 Prerequisites: `global.json` pins SDK 11.0.100 (`rollForward: latestMinor`). The test projects target
-`net10.0` and `net11.0` only, so they need the .NET 10 and .NET 11 runtimes; no .NET 8 or 9 runtime is
-needed to run tests. The library itself also compiles for `net8.0` and `net9.0`.
+`net10.0` and `net11.0`, like the library, so they need the .NET 10 and .NET 11 runtimes.
 
 CI job `build` in `.github/workflows/ci.yml`:
 
