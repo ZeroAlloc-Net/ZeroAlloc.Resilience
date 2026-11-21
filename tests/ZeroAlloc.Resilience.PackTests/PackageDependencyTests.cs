@@ -11,11 +11,9 @@ namespace ZeroAlloc.Resilience.PackTests;
 // runtime assembly references it, or the code the generator emits into the consumer does.
 public class PackageDependencyTests
 {
-    // The generated proxies and DI extensions use these; the runtime assembly itself does not.
+    // The generated proxies use these; the runtime assembly itself does not.
     private static readonly string[] GeneratedCodeDependencies =
     [
-        // The generated Add{Service}Resilience extensions.
-        "Microsoft.Extensions.DependencyInjection.Abstractions",
         // The Result return types the generated proxies build failures of.
         "ZeroAlloc.Results",
     ];
@@ -56,6 +54,14 @@ public class PackageDependencyTests
 
         unused.Should().BeEmpty("a package dependency nothing uses is restored and deployed by every consumer for nothing, and these are unused: {0}", string.Join(", ", unused));
     }
+
+    // #205: the generated Add{Service}Resilience extensions are emitted only when the consumer
+    // references IServiceCollection itself, so the package must not bring the abstractions into
+    // every consumer's dependency graph, including those that construct the proxies by hand.
+    [Fact]
+    public void DependencyInjectionAbstractions_IsNotAShippedDependency() =>
+        ShippedPackageReferences().Should().NotContain(
+            static id => id.StartsWith("Microsoft.Extensions.DependencyInjection", StringComparison.Ordinal));
 
     [Fact]
     public void RuntimeAssemblyReferences_AreAllShippedDependencies()
