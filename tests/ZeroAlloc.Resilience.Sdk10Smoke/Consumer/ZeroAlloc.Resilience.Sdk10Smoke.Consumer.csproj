@@ -33,6 +33,6 @@
 
   <ItemGroup>
     <PackageReference Include="ZeroAlloc.Resilience" Version="[$(ZeroAllocResilienceVersion)]" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.15" />
   </ItemGroup>
 </Project>
