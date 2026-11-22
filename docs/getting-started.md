@@ -14,6 +14,8 @@ dotnet add package ZeroAlloc.Resilience
 
 The source generator is bundled in the package — no separate install required. The package targets .NET 10 and .NET 11.
 
+The generator needs the .NET 10 SDK 10.0.100 or later, or Visual Studio 2026 or later. It is built against Roslyn 5.0, and an older compiler skips it with warning CS9057, after which the generated proxies and registrations are missing. Version 4.0.0 was built against Roslyn 5.12 and loads only in the .NET 11 SDK; on .NET 10, use 4.0.1 or later.
+
 The generated `Add{Name}Resilience` registration methods need `Microsoft.Extensions.DependencyInjection.Abstractions`, which ASP.NET Core and generic-host apps already reference. In a class library, add it yourself:
 
 ```bash

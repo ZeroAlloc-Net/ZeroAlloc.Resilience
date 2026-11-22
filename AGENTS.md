@@ -66,7 +66,29 @@ dotnet test tests/ZeroAlloc.Resilience.Generator.Tests -c Release --no-build -f 
 dotnet test tests/ZeroAlloc.Resilience.Tests -c Release --no-build -f net10.0 --filter "FullyQualifiedName~HappyPathAllocationTests"
 ```
 
+CI job `sdk10-consumer` needs a 10.0.1xx SDK; `tests/ZeroAlloc.Resilience.Sdk10Smoke/global.json` pins
+10.0.100 with `rollForward: latestPatch`, so a newer band cannot stand in for it. It builds and runs a
+consumer of the packed packages with Roslyn 5.0:
+
+```bash
+dotnet pack src/ZeroAlloc.Resilience -c Release -o artifacts -p:Version=9.9.9-local.<sha>
+cd tests/ZeroAlloc.Resilience.Sdk10Smoke/Consumer
+dotnet run -c Release -p:ZeroAllocResilienceVersion=9.9.9-local.<sha>
+```
+
+CI job `roslyn-floor` calls the shared `roslyn-floor.yml` from ZeroAlloc-Net/.github: it packs the
+solution and fails when a packed DLL references Roslyn above 5.0.0.
+
 ## Conventions and gotchas
+- The generator references `Microsoft.CodeAnalysis.CSharp` 5.0.0, the compiler of SDK band 10.0.1xx, the
+  oldest supported SDK. A compiler older than the Roslyn the generator references skips it with `CS9057`,
+  and nothing is generated. The shared Renovate preset holds it below 5.1. If a newer Roslyn API is
+  needed, change the code; raise the floor only together with the minimum SDK. Test projects may use a
+  newer Roslyn.
+- The `ZeroAlloc.StateMachine` dependency ships its own generator, built against Roslyn 5.9 in 1.5.3.
+  On a 10.0.1xx SDK that one is skipped with `CS9057` until the dependency is raised to a release built
+  against 5.0.0; the `sdk10-consumer` job keeps `CS9057` a warning for that reason. Tracked in
+  ZeroAlloc-Net/.github#77.
 
 - Allocation budget: the happy path of `[Retry]`, `[CircuitBreaker]`, `[RateLimit]` and the policy
   stack without `[Timeout]` is exactly 0 B, asserted in `tests/ZeroAlloc.Resilience.Tests/HappyPathAllocationTests.cs`.
