@@ -14,6 +14,8 @@ dotnet add package ZeroAlloc.Resilience
 
 The source generator is bundled in the package — no separate install required.
 
+The generator needs the .NET 10 SDK 10.0.100 or later, or Visual Studio 2026 or later. It is built against Roslyn 5.0, and an older compiler skips it with warning CS9057, after which the generated proxies and registrations are missing. Version 3.5.1 was built against Roslyn 5.9 and loads only in SDK 10.0.4xx or later; on an older .NET 10 SDK, use 3.5.2 or later. ZeroAlloc.StateMachine 1.5.3, a dependency, ships a generator built against Roslyn 5.9. That generator currently needs SDK 10.0.4xx, which runs Roslyn 5.9. On older .NET 10 SDKs the build warns with CS9057 and its generated methods are missing. This is tracked in ZeroAlloc-Net/.github#77.
+
 ## Annotate your interface
 
 Place policy attributes on the interface declaration (applies to all methods) or on individual methods (overrides interface-level config for that method):
