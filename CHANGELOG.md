@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.0.1](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v4.0.0...v4.0.1) (2026-11-22)
+
+
+### Bug Fixes
+
+* build the generator against Roslyn 5.0 so every .NET 10 SDK loads it ([#305](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/305)) ([4682fb6](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/4682fb679c6a9a601feeafa95852185d62b8c20e))
+
 ## [4.0.0](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v3.5.1...v4.0.0) (2026-11-21)
 
 
