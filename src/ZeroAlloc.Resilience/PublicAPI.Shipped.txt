@@ -2,6 +2,7 @@
 const ZeroAlloc.Resilience.RetryPolicy.MaxBackoffMs = 2147483646 -> int
 override ZeroAlloc.Resilience.ResilienceError.GetHashCode() -> int
 override ZeroAlloc.Resilience.ResilienceError.ToString() -> string!
+static ZeroAlloc.Resilience.CircuitBreakerFsm.Restore(ZeroAlloc.Resilience.CircuitBreakerState state) -> ZeroAlloc.Resilience.CircuitBreakerFsm!
 static ZeroAlloc.Resilience.ResilienceError.operator !=(ZeroAlloc.Resilience.ResilienceError left, ZeroAlloc.Resilience.ResilienceError right) -> bool
 static ZeroAlloc.Resilience.ResilienceError.operator ==(ZeroAlloc.Resilience.ResilienceError left, ZeroAlloc.Resilience.ResilienceError right) -> bool
 ZeroAlloc.Resilience.CircuitBreakerAttribute

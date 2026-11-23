@@ -1,2 +1,1 @@
 #nullable enable
-static ZeroAlloc.Resilience.CircuitBreakerFsm.Restore(ZeroAlloc.Resilience.CircuitBreakerState state) -> ZeroAlloc.Resilience.CircuitBreakerFsm!
