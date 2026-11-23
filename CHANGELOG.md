@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.1.0](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v4.0.1...v4.1.0) (2026-11-23)
+
+
+### Features
+
+* depend on ZeroAlloc.StateMachine 1.8.2 and expose CircuitBreakerFsm.Restore ([#312](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/issues/312)) ([24e678d](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/commit/24e678d3af3ec569c010bcfb9ab0115980c0c7bd))
+
 ## [4.0.1](https://github.com/ZeroAlloc-Net/ZeroAlloc.Resilience/compare/v4.0.0...v4.0.1) (2026-11-22)
 
 
