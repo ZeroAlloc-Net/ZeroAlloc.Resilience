@@ -10,7 +10,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="ZeroAlloc.StateMachine" Version="1.5.3" />
+    <PackageReference Include="ZeroAlloc.StateMachine" Version="1.8.2" />
     <PackageReference Include="ZeroAlloc.Results" Version="1.2.2" />
     <PackageReference Include="Microsoft.CodeAnalysis.PublicApiAnalyzers" Version="5.6.0">
       <PrivateAssets>all</PrivateAssets>
